@@ -1,5 +1,5 @@
 // ── State ────────────────────────────────────────────────────────────────────
-const VERSION = "v2.3.2";
+const VERSION = "v2.3.3";
 const state = {
   view: "home",       // home | summary | cross | dashboard | topics | messages
   apiKey: "",
@@ -225,20 +225,6 @@ function renderGroups() {
         <button class="group-remove" data-remove="${g.id}">✕</button>
       </div>
       <input class="input" style="margin-bottom:8px" data-field="name" data-id="${g.id}" placeholder="שם הקבוצה" value="${g.name || ""}" />
-      <input class="input" style="margin-bottom:8px" data-field="context" data-id="${g.id}" placeholder="הקשר / נושא (לקוחות, ספקים, צוות...)" value="${g.context || ""}" />
-      <input class="input" data-field="focus" data-id="${g.id}" placeholder="מה לשים דגש? (הזדמנויות, בעיות...)" value="${g.focus || ""}" />
-      ${dateRangeSelect(g.id, g.datePreset || "all")}
-      ${showCustom ? `<div class="date-range">
-        <div style="flex:1;display:flex;gap:4px;align-items:center">
-          <input type="date" class="input" data-field="dateFrom" data-id="${g.id}" value="${g.dateFrom || ""}" min="${g.dateMin || ""}" max="${g.dateMax || ""}" style="flex:1" />
-          <button class="today-btn" data-today-target="dateFrom" data-today-id="${g.id}">היום</button>
-        </div>
-        <div style="flex:1;display:flex;gap:4px;align-items:center">
-          <input type="date" class="input" data-field="dateTo" data-id="${g.id}" value="${g.dateTo || ""}" min="${g.dateMin || ""}" max="${g.dateMax || ""}" style="flex:1" />
-          <button class="today-btn" data-today-target="dateTo" data-today-id="${g.id}">היום</button>
-        </div>
-      </div>` : ""}
-      ${isFiltered ? `<div class="date-range-info">${filteredCount} מתוך ${g.messageCount} הודעות בטווח שנבחר</div>` : ""}
     </div>`;
   }).join("");
 
@@ -250,7 +236,7 @@ function renderGroups() {
       </div>
       ${groupsHtml}
       <button class="btn btn-primary" id="run-btn" ${state.processing || !state.groups.length ? "disabled" : ""} style="margin-top:4px">
-        ${state.processing ? `<span class="spinner"></span> מעבד...` : `✨ העלה וסכם ${state.groups.length} קבוצה${state.groups.length !== 1 ? "ות" : ""}`}
+        ${state.processing ? `<span class="spinner"></span> מעלה...` : `📤 העלה ${state.groups.length} קבוצה${state.groups.length !== 1 ? "ות" : ""}`}
       </button>
     </div>`;
 }
@@ -379,15 +365,9 @@ function bindHomeEvents() {
     state.processing = true; render();
     for (const g of state.groups) {
       try {
-        // Upload
         state.progress[g.id] = "מעלה..."; render();
         await uploadGroup(g);
-
-        // Summarize
-        state.progress[g.id] = "מסכם..."; render();
-        const res = await API.summarize(g.id, g.dateFrom, g.dateTo);
-        state.summaries[g.id] = res.result;
-        state.progress[g.id] = "✓ מוכן";
+        state.progress[g.id] = "✓ הועלה";
       } catch (e) {
         state.progress[g.id] = `❌ ${e.message || "שגיאה"}`;
         console.error(e);
@@ -395,9 +375,11 @@ function bindHomeEvents() {
       render();
     }
     state.processing = false;
-    // Refresh DB groups and notify other tabs/devices
+    state.groups = [];
+    state.progress = {};
     await loadDbGroups();
     notifyOtherTabs();
+    showToast("✓ הקבוצות הועלו — עבור לדשבורד לסכם");
     render();
   });
 
