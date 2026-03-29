@@ -905,7 +905,7 @@ function bindDashboardEvents(d) {
         const text = msgs.map(m => `[${m.date} ${m.time}] ${m.sender}: ${m.text}`).join("\n");
         const groupName = d.groups.find(g=>g.id===groupId)?.name || "chat";
         // Always download as file
-        const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
+        const blob = new Blob(["\ufeff" + text], { type: "text/plain;charset=utf-8" });
         const a = document.createElement("a");
         a.href = URL.createObjectURL(blob);
         a.download = `${groupName}.txt`;
