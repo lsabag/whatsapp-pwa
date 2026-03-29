@@ -35,7 +35,7 @@ const API = {
 
   // Summaries
   getSummaries(groupId) { return this.fetch(`/summaries/${groupId}`); },
-  deleteSummary(id) { return this.fetch(`/summaries/${id}`, { method: "DELETE" }); },
+  deleteSummary(id) { return this.fetch(`/summaries/${encodeURIComponent(id)}`, { method: "DELETE" }); },
 
   // Cross analysis
   crossAnalyze(groupIds) { return this.fetch("/cross-analyze", { method: "POST", body: { groupIds } }); },

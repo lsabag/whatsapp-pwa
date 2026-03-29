@@ -1,5 +1,5 @@
 // ── State ────────────────────────────────────────────────────────────────────
-const VERSION = "v2.2.1";
+const VERSION = "v2.2.2";
 const state = {
   view: "home",       // home | summary | cross | dashboard
   apiKey: "",
@@ -613,7 +613,7 @@ function renderDashboardContent(d) {
             <div style="font-size:10px;color:var(--dim)">${formatDate(s.created_at)} ${time}${msgs ? ` · ${msgs}` : ""}</div>
           </div>
           ${s.result.mood ? `<span class="badge badge-${{ חיובי: "green", ניטרלי: "blue", מתוח: "red" }[s.result.mood] || "blue"}">${s.result.mood}</span>` : ""}
-          <button class="group-remove" data-delete-summary="${s.id}" style="font-size:13px;padding:2px 6px">✕</button>
+          <button class="group-remove" data-delete-summary="${encodeURIComponent(s.id)}" data-summary-date="${formatDate(s.created_at)} ${time}" data-summary-range="${range}" style="font-size:13px;padding:2px 6px">✕</button>
         </div>`;
       }).join("") : `<div style="font-size:12px;color:var(--dim);padding:8px">לא סוכם עדיין</div>`}
       <select class="input input-sm" data-dash-dateselect="${g.id}" style="margin-top:8px">
@@ -673,10 +673,16 @@ function bindDashboardEvents(d) {
   document.querySelectorAll("[data-delete-summary]").forEach(el => {
     el.addEventListener("click", async (e) => {
       e.stopPropagation();
-      await API.deleteSummary(el.dataset.deleteSummary);
-      state.dashboard = await API.getDashboard();
-      notifyOtherTabs();
-      showToast("✓ סיכום נמחק");
+      const date = el.dataset.summaryDate;
+      const range = el.dataset.summaryRange;
+      if (!confirm(`למחוק את הסיכום של ${date}?\nטווח: ${range}`)) return;
+      const id = decodeURIComponent(el.dataset.deleteSummary);
+      try {
+        await API.deleteSummary(id);
+        state.dashboard = await API.getDashboard();
+        notifyOtherTabs();
+        showToast("✓ סיכום נמחק");
+      } catch (err) { showToast(`❌ ${err.message}`); }
       render();
     });
   });

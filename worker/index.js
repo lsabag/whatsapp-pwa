@@ -168,7 +168,8 @@ async function getSummaries(groupId, env) {
 }
 
 async function deleteSummary(id, env) {
-  await env.DB.prepare("DELETE FROM summaries WHERE id = ?").bind(id).run();
+  const decoded = decodeURIComponent(id);
+  await env.DB.prepare("DELETE FROM summaries WHERE id = ?").bind(decoded).run();
   return json({ ok: true });
 }
 
