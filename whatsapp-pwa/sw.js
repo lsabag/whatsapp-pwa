@@ -1,4 +1,4 @@
-const CACHE = "wa-summarizer-v1";
+const CACHE = "wa-summarizer-v2";
 const ASSETS = ["/", "/index.html", "/manifest.json"];
 
 // Install
@@ -21,7 +21,7 @@ self.addEventListener("fetch", e => {
   const url = new URL(e.request.url);
 
   // Handle share target POST
-  if (url.pathname === "/share-target" && e.request.method === "POST") {
+  if (url.pathname.includes("share-target") && e.request.method === "POST") {
     e.respondWith(
       (async () => {
         const formData = await e.request.formData();

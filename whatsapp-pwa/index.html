@@ -930,7 +930,7 @@ if ("serviceWorker" in navigator) {
   // Check for pending share from SW cache
   window.addEventListener("load", async () => {
     if (navigator.serviceWorker.controller) {
-      const cache = await caches.open("wa-summarizer-v1");
+      const cache = await caches.open("wa-summarizer-v2");
       const pending = await cache.match("/__pending_share__");
       if (pending) {
         const { base64, fileName } = await pending.json();
