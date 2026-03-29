@@ -106,7 +106,7 @@ async function runSummarize(groupId, dateFrom, dateTo, focus, onProgress) {
   // Step 1: Prepare
   onProgress("מכין...", 0);
   const prep = await API.summarizePrepare(groupId, dateFrom, dateTo, focus);
-  const { totalChunks, totalMessages, topSenders, groupName, context } = prep;
+  const { totalChunks, totalMessages, topSenders, groupName, context, chunkSize } = prep;
   onProgress(`${totalMessages} הודעות, ${totalChunks} חלקים`, 0);
 
   // Step 2: Chunk by chunk
@@ -117,7 +117,7 @@ async function runSummarize(groupId, dateFrom, dateTo, focus, onProgress) {
     while (retries > 0) {
       try {
         const res = await API.summarizeChunk({
-          groupId, dateFrom, dateTo, chunkIndex: i, totalChunks,
+          groupId, dateFrom, dateTo, chunkIndex: i, totalChunks, chunkSize,
           focus: focus || prep.focus, groupName, context,
         });
         partials.push(res.result);

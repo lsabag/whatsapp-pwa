@@ -223,14 +223,16 @@ async function summarizePrepare(request, env) {
 
   if (!msgs.length) return json({ error: "אין הודעות בטווח שנבחר" }, 400);
 
-  const chunks = chunkMessages(msgs, 5500);
+  const msgsPerChunk = 80;
+  const totalChunks = Math.ceil(msgs.length / msgsPerChunk);
   const senderCount = {};
   for (const m of msgs) senderCount[m.sender] = (senderCount[m.sender] || 0) + 1;
   const topSenders = Object.entries(senderCount).sort((a, b) => b[1] - a[1]).slice(0, 5);
 
   return json({
     totalMessages: msgs.length,
-    totalChunks: chunks.length,
+    totalChunks,
+    chunkSize: msgsPerChunk,
     topSenders,
     groupName: group.name,
     context: group.context,
@@ -238,29 +240,31 @@ async function summarizePrepare(request, env) {
   });
 }
 
-// Step 2: Summarize one chunk
+// Step 2: Summarize one chunk — uses LIMIT/OFFSET to avoid fetching all messages
 async function summarizeChunk(request, env) {
-  const { groupId, dateFrom, dateTo, chunkIndex, totalChunks, focus, groupName, context } = await request.json();
+  const { groupId, dateFrom, dateTo, chunkIndex, totalChunks, chunkSize, focus, groupName, context } = await request.json();
 
   const keyRow = await env.DB.prepare("SELECT value FROM settings WHERE key = 'groq_key'").first();
   if (!keyRow) return json({ error: "API Key לא מוגדר" }, 400);
 
+  const msgsPerChunk = chunkSize || 80;
   let query = "SELECT date, time, sender, text FROM messages WHERE group_id = ?";
   const params = [groupId];
   if (dateFrom) { query += " AND parsed_date >= ?"; params.push(dateFrom); }
   if (dateTo) { query += " AND parsed_date <= ?"; params.push(dateTo); }
-  query += " ORDER BY id ASC";
+  query += ` ORDER BY id ASC LIMIT ${msgsPerChunk} OFFSET ${chunkIndex * msgsPerChunk}`;
   const msgs = (await env.DB.prepare(query).bind(...params).all()).results;
-  const chunks = chunkMessages(msgs, 5500);
 
-  if (chunkIndex >= chunks.length) return json({ error: "Invalid chunk index" }, 400);
+  if (!msgs.length) return json({ chunkIndex, result: { summary: "", topics: [] } });
 
+  const focusPrompt = focus ? `\nהמשתמש ביקש דגש מיוחד על: "${focus}" — וודא שכל אזכור של נושא זה מופיע בסיכום.` : "";
   const focusLine = focus ? `\nשים דגש מיוחד על: ${focus}` : "";
   const contextLine = context ? ` | נושא: ${context}` : "";
-  const focusPrompt = focus ? `\nהמשתמש ביקש דגש מיוחד על: "${focus}" — וודא שכל אזכור של נושא זה מופיע בסיכום.` : "";
 
-  const chatText = chunks[chunkIndex].map(m => `[${m.date} ${m.time}] ${m.sender}: ${m.text}`).join("\n");
-  const userMsg = `קבוצה: "${groupName}"${contextLine} | חלק ${chunkIndex + 1}/${totalChunks}${focusLine}\n${chatText}`;
+  const chatText = msgs.map(m => `[${m.date} ${m.time}] ${m.sender}: ${m.text}`).join("\n");
+  // Trim if still too long
+  const trimmed = chatText.length > 6000 ? chatText.slice(0, 6000) : chatText;
+  const userMsg = `קבוצה: "${groupName}"${contextLine} | חלק ${chunkIndex + 1}/${totalChunks}${focusLine}\n${trimmed}`;
 
   const result = parseGroqResult(await callGroq(SYS_CHUNK + focusPrompt + "\n" + JSON_CHUNK, userMsg, keyRow.value));
   return json({ chunkIndex, result });
