@@ -207,15 +207,19 @@ async function summarize(request, env) {
   const chunks = chunkMessages(msgs, 5500);
   const partials = [];
 
+  const focusLine = group.focus ? `\nשים דגש מיוחד על: ${group.focus}` : "";
+  const contextLine = group.context ? ` | נושא: ${group.context}` : "";
+
   const sysChunk = `אתה מנתח שיחות WhatsApp לאנשי עסקים. ענה בעברית בלבד. החזר JSON בלבד ללא backticks ולא כלום אחר.
-חשוב מאוד: ציין כל נושא שעלה בשיחה, גם אם הוא קטן. אל תדלג על שום נושא.
-רשום כמה שיותר פריטים בכל שדה — עדיף יותר מדי מאשר פחות מדי.
-{"topics":["נושא 1","נושא 2","נושא 3","...כל הנושאים שעלו"],"summary":"תקציר 3-5 משפטים מפורט","actionItems":["..."],"openQuestions":["..."],"businessInsights":["..."],"keyDecisions":["..."],"mood":"חיובי/ניטרלי/מתוח","urgentItems":["..."],"trends":["..."],"brokenPromises":["..."],"recurringProblems":["..."]}`;
+חשוב מאוד: ציין כל נושא שעלה בשיחה, גם אם הוא קטן או שדיברו עליו רק כמה הודעות. אל תדלג על שום נושא.
+כל שם מוצר, כלי, טכנולוגיה, אפליקציה, או שירות שהוזכר — חייב להופיע ברשימת הנושאים.
+רשום כמה שיותר פריטים בכל שדה — עדיף יותר מדי מאשר פחות מדי.${group.focus ? `\nהמשתמש ביקש דגש מיוחד על: "${group.focus}" — וודא שכל אזכור של נושא זה מופיע בסיכום.` : ""}
+{"topics":["נושא 1","נושא 2","נושא 3","...כל הנושאים שעלו כולל כלים/מוצרים/שירותים"],"summary":"תקציר 3-5 משפטים מפורט","actionItems":["..."],"openQuestions":["..."],"businessInsights":["..."],"keyDecisions":["..."],"mood":"חיובי/ניטרלי/מתוח","urgentItems":["..."],"trends":["..."],"brokenPromises":["..."],"recurringProblems":["..."]}`;
 
   for (let i = 0; i < chunks.length; i++) {
     if (i > 0) await sleep(3000);
     const chatText = chunks[i].map(m => `[${m.date} ${m.time}] ${m.sender}: ${m.text}`).join("\n");
-    const userMsg = `קבוצה: "${group.name}" | חלק ${i + 1}/${chunks.length}\n${chatText}`;
+    const userMsg = `קבוצה: "${group.name}"${contextLine} | חלק ${i + 1}/${chunks.length}${focusLine}\n${chatText}`;
     partials.push(parseGroqResult(await callGroq(sysChunk, userMsg, apiKey)));
   }
 
