@@ -1,0 +1,928 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover"/>
+  <meta name="theme-color" content="#10b981"/>
+  <meta name="apple-mobile-web-app-capable" content="yes"/>
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+  <title>WhatsApp Summarizer</title>
+  <link rel="manifest" href="/manifest.json"/>
+  <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png"/>
+  <link rel="apple-touch-icon" href="/icon-192.png"/>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Hebrew:wght@300;400;600;700&display=swap" rel="stylesheet"/>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #080d0a;
+      --surface: #111a14;
+      --border: rgba(255,255,255,0.08);
+      --text: rgba(255,255,255,0.88);
+      --muted: rgba(255,255,255,0.4);
+      --dim: rgba(255,255,255,0.15);
+      --green: #10b981;
+      --green-dim: rgba(16,185,129,0.15);
+      --green-border: rgba(16,185,129,0.3);
+      --red: #ef4444;
+      --amber: #f59e0b;
+      --purple: #8b5cf6;
+      --blue: #3b82f6;
+      --orange: #f97316;
+    }
+
+    html, body {
+      height: 100%;
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Noto Sans Hebrew', sans-serif;
+      font-size: 15px;
+      line-height: 1.5;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    #app { min-height: 100dvh; display: flex; flex-direction: column; }
+
+    /* Header */
+    .header {
+      padding: 16px 20px;
+      padding-top: calc(16px + env(safe-area-inset-top));
+      border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; gap: 12px;
+      background: var(--bg);
+      position: sticky; top: 0; z-index: 100;
+    }
+    .header-icon {
+      width: 38px; height: 38px; border-radius: 12px;
+      background: var(--green); display: flex; align-items: center;
+      justify-content: center; font-size: 20px; flex-shrink: 0;
+    }
+    .header-title { font-size: 16px; font-weight: 700; color: var(--text); }
+    .header-sub { font-size: 12px; color: var(--muted); }
+    .header-badge {
+      margin-right: auto;
+      background: var(--green-dim); border: 1px solid var(--green-border);
+      color: var(--green); font-size: 11px; font-weight: 600;
+      padding: 2px 10px; border-radius: 999px;
+    }
+
+    /* Main */
+    .main { flex: 1; padding: 16px 20px; padding-bottom: calc(24px + env(safe-area-inset-bottom)); max-width: 600px; width: 100%; margin: 0 auto; }
+
+    /* API Key setup */
+    .setup-card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 20px; padding: 24px; margin-bottom: 16px;
+    }
+    .setup-title { font-size: 15px; font-weight: 700; margin-bottom: 8px; display: flex; align-items: center; gap-8px; gap: 8px; }
+    .setup-desc { font-size: 13px; color: var(--muted); margin-bottom: 16px; line-height: 1.6; }
+    .setup-link { color: var(--green); text-decoration: none; }
+
+    /* Input */
+    .input {
+      width: 100%; background: rgba(255,255,255,0.05); border: 1px solid var(--border);
+      border-radius: 12px; padding: 12px 14px; font-size: 14px; color: var(--text);
+      font-family: inherit; outline: none; transition: border-color 0.2s;
+      -webkit-appearance: none;
+    }
+    .input:focus { border-color: var(--green-border); }
+    .input::placeholder { color: var(--dim); }
+
+    /* Button */
+    .btn {
+      width: 100%; padding: 14px; border-radius: 14px; font-size: 15px;
+      font-weight: 700; font-family: inherit; border: none; cursor: pointer;
+      transition: all 0.15s; -webkit-tap-highlight-color: transparent;
+    }
+    .btn-primary { background: var(--green); color: #fff; }
+    .btn-primary:active { transform: scale(0.97); background: #0ea271; }
+    .btn-primary:disabled { opacity: 0.4; }
+    .btn-outline {
+      background: transparent; border: 1px solid var(--border);
+      color: var(--muted); margin-top: 8px;
+    }
+    .btn-purple {
+      background: rgba(139,92,246,0.15); border: 1px solid rgba(139,92,246,0.3);
+      color: #a78bfa;
+    }
+    .btn-purple:active { transform: scale(0.97); }
+
+    /* Drop zone */
+    .drop-zone {
+      border: 2px dashed var(--border); border-radius: 20px;
+      padding: 40px 20px; text-align: center; cursor: pointer;
+      transition: all 0.2s; margin-bottom: 16px; -webkit-tap-highlight-color: transparent;
+    }
+    .drop-zone.drag { border-color: var(--green); background: var(--green-dim); }
+    .drop-zone-icon { font-size: 40px; margin-bottom: 12px; }
+    .drop-zone-title { font-size: 14px; font-weight: 600; color: rgba(255,255,255,0.65); margin-bottom: 6px; }
+    .drop-zone-sub { font-size: 12px; color: var(--muted); }
+    .drop-zone-hint {
+      margin-top: 14px; display: inline-block;
+      background: rgba(255,255,255,0.04); border: 1px solid var(--border);
+      border-radius: 8px; padding: 4px 12px; font-size: 11px; color: var(--dim);
+    }
+
+    /* Group card */
+    .group-card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 16px; padding: 16px; margin-bottom: 10px;
+    }
+    .group-card-header { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+    .group-avatar {
+      width: 36px; height: 36px; border-radius: 50%;
+      background: var(--green-dim); border: 1px solid var(--green-border);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 14px; font-weight: 700; color: var(--green); flex-shrink: 0;
+    }
+    .group-filename { font-size: 11px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .group-count { font-size: 11px; color: var(--dim); }
+    .group-remove { margin-right: auto; color: var(--dim); font-size: 16px; background: none; border: none; cursor: pointer; padding: 4px; }
+    .group-remove:active { color: var(--red); }
+
+    /* Badge */
+    .badge {
+      display: inline-flex; align-items: center;
+      padding: 2px 10px; border-radius: 999px; font-size: 11px; font-weight: 600; border: 1px solid;
+    }
+    .badge-green { background: var(--green-dim); color: var(--green); border-color: var(--green-border); }
+    .badge-amber { background: rgba(245,158,11,0.15); color: #fbbf24; border-color: rgba(245,158,11,0.3); }
+    .badge-red { background: rgba(239,68,68,0.15); color: #f87171; border-color: rgba(239,68,68,0.3); }
+    .badge-blue { background: rgba(59,130,246,0.15); color: #93c5fd; border-color: rgba(59,130,246,0.3); }
+    .badge-orange { background: rgba(249,115,22,0.15); color: #fb923c; border-color: rgba(249,115,22,0.3); }
+    .badge-purple { background: rgba(139,92,246,0.15); color: #a78bfa; border-color: rgba(139,92,246,0.3); }
+
+    /* Summary */
+    .summary-header {
+      background: linear-gradient(135deg, rgba(16,185,129,0.2), rgba(20,184,166,0.1));
+      border: 1px solid var(--green-border); border-radius: 20px;
+      padding: 20px; margin-bottom: 12px;
+    }
+    .summary-name { font-size: 20px; font-weight: 700; margin-bottom: 4px; }
+    .summary-meta { font-size: 12px; color: var(--muted); margin-bottom: 12px; }
+    .summary-badges { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
+    .summary-text { font-size: 14px; color: rgba(255,255,255,0.78); line-height: 1.65; }
+
+    .section-card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 16px; padding: 16px; margin-bottom: 10px;
+    }
+    .section-card.urgent { background: rgba(239,68,68,0.08); border-color: rgba(239,68,68,0.25); }
+    .section-card.orange { background: rgba(249,115,22,0.07); border-color: rgba(249,115,22,0.2); }
+    .section-header { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+    .section-icon { font-size: 18px; }
+    .section-title { font-size: 14px; font-weight: 700; color: rgba(255,255,255,0.88); flex: 1; }
+    .section-count { font-size: 12px; color: var(--muted); }
+    .section-empty { font-size: 12px; color: var(--dim); font-style: italic; }
+    .section-list { list-style: none; display: flex; flex-direction: column; gap: 8px; }
+    .section-item { display: flex; gap: 8px; font-size: 13px; color: rgba(255,255,255,0.72); line-height: 1.55; }
+    .section-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; margin-top: 6px; }
+
+    /* Trend chart */
+    .chart { display: flex; align-items: flex-end; gap: 6px; height: 64px; margin-top: 4px; }
+    .chart-col { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; height: 100%; justify-content: flex-end; }
+    .chart-count { font-size: 10px; color: var(--muted); }
+    .chart-bar { width: 100%; border-radius: 4px 4px 0 0; min-height: 4px; }
+    .chart-label { font-size: 9px; color: var(--dim); }
+
+    /* Top senders */
+    .sender-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+    .sender-rank { font-size: 11px; color: var(--muted); width: 16px; text-align: left; }
+    .sender-name { font-size: 13px; color: rgba(255,255,255,0.78); width: 110px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex-shrink: 0; }
+    .sender-bar-bg { flex: 1; height: 6px; background: rgba(255,255,255,0.07); border-radius: 999px; overflow: hidden; }
+    .sender-bar { height: 100%; border-radius: 999px; background: linear-gradient(90deg, #10b981, #14b8a6); }
+    .sender-count { font-size: 11px; color: var(--muted); width: 28px; text-align: left; }
+
+    /* Cross */
+    .cross-topic { border-right: 2px solid rgba(139,92,246,0.4); padding-right: 12px; margin-bottom: 14px; }
+    .cross-topic-title { font-size: 14px; font-weight: 600; margin-bottom: 4px; }
+    .cross-topic-badges { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 4px; }
+    .cross-topic-insight { font-size: 12px; color: var(--muted); }
+
+    /* Nav back */
+    .nav-back { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+    .back-btn { font-size: 14px; color: var(--muted); background: none; border: none; cursor: pointer; font-family: inherit; padding: 4px; }
+    .back-btn:active { color: var(--text); }
+    .export-btn {
+      display: flex; align-items: center; gap: 6px;
+      padding: 8px 16px; border-radius: 12px; font-size: 13px; font-weight: 600;
+      background: var(--green-dim); border: 1px solid var(--green-border);
+      color: var(--green); cursor: pointer; font-family: inherit;
+    }
+    .export-btn:active { background: rgba(16,185,129,0.25); }
+
+    /* Loading spinner */
+    .spinner { display: inline-block; width: 16px; height: 16px; border: 2px solid rgba(255,255,255,0.2); border-top-color: #fff; border-radius: 50%; animation: spin 0.7s linear infinite; vertical-align: middle; margin-left: 6px; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Toast */
+    .toast {
+      position: fixed; bottom: calc(24px + env(safe-area-inset-bottom)); left: 50%; transform: translateX(-50%);
+      background: #1a2e24; border: 1px solid var(--green-border); color: var(--green);
+      padding: 10px 20px; border-radius: 999px; font-size: 13px; font-weight: 600;
+      z-index: 999; white-space: nowrap; opacity: 0; transition: opacity 0.3s;
+      pointer-events: none;
+    }
+    .toast.show { opacity: 1; }
+
+    /* Summary ready card */
+    .ready-card {
+      background: var(--green-dim); border: 1px solid var(--green-border);
+      border-radius: 14px; padding: 14px 16px; margin-bottom: 8px; cursor: pointer;
+      transition: background 0.15s; -webkit-tap-highlight-color: transparent;
+    }
+    .ready-card:active { background: rgba(16,185,129,0.22); }
+    .ready-card-row { display: flex; align-items: center; justify-content: space-between; }
+    .ready-card-name { font-size: 14px; font-weight: 600; }
+    .ready-card-arrow { color: var(--green); font-size: 13px; }
+    .ready-card-preview { font-size: 12px; color: var(--muted); margin-top: 4px; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+
+    .cross-ready-card {
+      background: rgba(139,92,246,0.1); border: 1px solid rgba(139,92,246,0.25);
+      border-radius: 14px; padding: 14px 16px; margin-bottom: 8px; cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .cross-ready-card:active { background: rgba(139,92,246,0.2); }
+
+    .section-sep { font-size: 12px; font-weight: 700; color: var(--muted); margin: 12px 0 8px; }
+
+    input[type="file"] { display: none; }
+    input[type="password"] { direction: ltr; text-align: left; }
+  </style>
+</head>
+<body>
+<div id="app"></div>
+<div class="toast" id="toast"></div>
+<input type="file" id="file-input" accept=".zip,.txt" multiple/>
+
+<script>
+// ── State ────────────────────────────────────────────────────────────────────
+const state = {
+  view: "home",       // home | summary | cross
+  apiKey: localStorage.getItem("groq_key") || "",
+  groups: [],
+  summaries: {},
+  crossResult: null,
+  activeGroupId: null,
+  processing: false,
+  crossLoading: false,
+  progress: {},
+};
+
+// ── ZIP Parser ────────────────────────────────────────────────────────────────
+async function extractTxtFromZip(arrayBuffer) {
+  const bytes = new Uint8Array(arrayBuffer);
+  const dec = new TextDecoder("utf-8");
+  const files = [];
+  let i = 0;
+  while (i < bytes.length - 4) {
+    if (bytes[i]===0x50&&bytes[i+1]===0x4B&&bytes[i+2]===0x03&&bytes[i+3]===0x04) {
+      const method = bytes[i+8]|(bytes[i+9]<<8);
+      const cSize = bytes[i+18]|(bytes[i+19]<<8)|(bytes[i+20]<<16)|(bytes[i+21]<<24);
+      const uSize = bytes[i+22]|(bytes[i+23]<<8)|(bytes[i+24]<<16)|(bytes[i+25]<<24);
+      const fnLen = bytes[i+26]|(bytes[i+27]<<8);
+      const exLen = bytes[i+28]|(bytes[i+29]<<8);
+      const fname = dec.decode(bytes.slice(i+30,i+30+fnLen));
+      const dStart = i+30+fnLen+exLen;
+      if (fname.endsWith(".txt")) {
+        const raw = bytes.slice(dStart, dStart+cSize);
+        if (method === 0) {
+          files.push({ filename: fname, content: dec.decode(raw) });
+        } else if (method === 8) {
+          try {
+            const ds = new DecompressionStream("deflate-raw");
+            const writer = ds.writable.getWriter();
+            writer.write(raw); writer.close();
+            const chunks = []; const reader = ds.readable.getReader();
+            while (true) { const {done, value} = await reader.read(); if (done) break; chunks.push(value); }
+            const total = chunks.reduce((s,c)=>s+c.length,0);
+            const result = new Uint8Array(total); let off=0;
+            for (const c of chunks) { result.set(c,off); off+=c.length; }
+            files.push({ filename: fname, content: dec.decode(result) });
+          } catch { console.warn("Failed to decompress:", fname); }
+        }
+      }
+      i = dStart+cSize;
+    } else i++;
+  }
+  return files;
+}
+
+function base64ToArrayBuffer(base64) {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return bytes.buffer;
+}
+
+// ── WhatsApp Parser ───────────────────────────────────────────────────────────
+function parseWhatsApp(text) {
+  const lines = text.split("\n");
+  const msgs = [];
+  const msgRe = /^(\d{1,2}[\/\.]\d{1,2}[\/\.]\d{2,4}),?\s+(\d{1,2}:\d{2}(?::\d{2})?(?:\s?[AP]M)?)\s*[-–]\s+([^:]+?):\s+(.+)$/;
+  const sysRe = /^(\d{1,2}[\/\.]\d{1,2}[\/\.]\d{2,4}),?\s+(\d{1,2}:\d{2})/;
+  for (const line of lines) {
+    const m = msgRe.exec(line.trim());
+    if (m) msgs.push({ date:m[1], time:m[2], sender:m[3].trim(), text:m[4] });
+    else if (msgs.length&&line.trim()&&!sysRe.test(line.trim()))
+      msgs[msgs.length-1].text += " "+line.trim();
+  }
+  return msgs;
+}
+
+function getTopSenders(messages, n=5) {
+  const c = {};
+  for (const m of messages) c[m.sender]=(c[m.sender]||0)+1;
+  return Object.entries(c).sort((a,b)=>b[1]-a[1]).slice(0,n).map(([name,count])=>({name,count}));
+}
+
+function parseDate(s) {
+  const p = s.split(/[\/\.]/);
+  if (p.length<3) return null;
+  let [d,mo,y]=p; if(y.length===2) y="20"+y;
+  return new Date(+y,+mo-1,+d);
+}
+
+function getWeeklyBuckets(messages) {
+  const b={};
+  for (const m of messages) {
+    const d=parseDate(m.date); if(!d) continue;
+    const mon=new Date(d); mon.setDate(d.getDate()-((d.getDay()+6)%7));
+    const k=mon.toISOString().slice(0,10);
+    if(!b[k])b[k]=[];b[k].push(m);
+  }
+  return Object.entries(b).sort((a,b)=>a[0]>b[0]?1:-1).map(([week,msgs])=>({week,msgs,count:msgs.length}));
+}
+
+function detectSilence(messages) {
+  if (messages.length<20) return [];
+  const mid=Math.floor(messages.length/2);
+  const first=messages.slice(0,mid), second=messages.slice(mid);
+  const fs=new Set(first.map(m=>m.sender)), ss=new Set(second.map(m=>m.sender));
+  const c={};
+  for(const m of first) c[m.sender]=(c[m.sender]||0)+1;
+  return [...fs].filter(s=>!ss.has(s)&&c[s]>=3)
+    .sort((a,b)=>c[b]-c[a]).slice(0,5).map(s=>({name:s,messagesBefore:c[s]}));
+}
+
+// ── Groq API ──────────────────────────────────────────────────────────────────
+async function callGroq(system, user, key) {
+  const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+    method: "POST",
+    headers: { "Content-Type":"application/json", "Authorization":`Bearer ${key}` },
+    body: JSON.stringify({
+      model: "llama-3.3-70b-versatile",
+      temperature: 0.3,
+      max_tokens: 1500,
+      messages: [{ role:"system", content:system }, { role:"user", content:user }]
+    })
+  });
+  if (!res.ok) {
+    const msgs = { 401: "API Key לא תקין — בדוק את המפתח", 429: "חריגה ממגבלת בקשות — נסה שוב בעוד דקה", 500: "שגיאה בשרת Groq — נסה שוב" };
+    throw new Error(msgs[res.status] || `שגיאת Groq: ${res.status}`);
+  }
+  const data = await res.json();
+  return data.choices?.[0]?.message?.content || "{}";
+}
+
+async function summarizeGroup(group) {
+  const topSenders = getTopSenders(group.messages);
+  const recent = group.messages.slice(-400);
+  const chatText = recent.map(m=>`[${m.date} ${m.time}] ${m.sender}: ${m.text}`).join("\n");
+  const weekly = getWeeklyBuckets(group.messages).slice(-4).map(b=>`שבוע ${b.week}: ${b.count} הודעות`).join(", ");
+
+  const sys = `אתה מנתח שיחות WhatsApp לאנשי עסקים. ענה בעברית בלבד. החזר JSON בלבד ללא backticks ולא כלום אחר.
+{"summary":"תקציר 3-5 משפטים","actionItems":["..."],"openQuestions":["..."],"businessInsights":["..."],"keyDecisions":["..."],"mood":"חיובי/ניטרלי/מתוח","urgentItems":["..."],"trends":["מגמה שיח 1","מגמה 2"],"brokenPromises":["הבטחה שלא קוימה"],"recurringProblems":["בעיה חוזרת"]}`;
+
+  const user = `קבוצה: "${group.name}" | נושא: ${group.context||"כללי"} | דגש: ${group.focus||"הכל"}
+סה"כ: ${group.messages.length} הודעות | טופ: ${topSenders.map(s=>`${s.name}(${s.count})`).join(", ")}
+נפח שבועי: ${weekly}
+${chatText}`;
+
+  const txt = await callGroq(sys, user, state.apiKey);
+  try { return JSON.parse(txt.replace(/```json|```/g,"").trim()); }
+  catch { return { summary:txt, actionItems:[], openQuestions:[], businessInsights:[], trends:[], brokenPromises:[], recurringProblems:[] }; }
+}
+
+async function runCrossAnalysis() {
+  const readyGroups = state.groups.filter(g=>state.summaries[g.id]);
+  const input = readyGroups.map(g=>({
+    name: g.name,
+    summary: state.summaries[g.id]?.summary||"",
+    actionItems: state.summaries[g.id]?.actionItems||[],
+    businessInsights: state.summaries[g.id]?.businessInsights||[],
+    trends: state.summaries[g.id]?.trends||[],
+    brokenPromises: state.summaries[g.id]?.brokenPromises||[],
+  }));
+  const sys = `אתה מנתח תבניות חוצות-קבוצות. ענה בעברית בלבד. החזר JSON בלבד ללא backticks.
+{"crossTopics":[{"topic":"נושא","groups":["..."],"insight":"..."}],"systemicProblems":["..."],"opportunities":["..."],"peopleInMultipleGroups":[{"name":"...","groups":["..."],"context":"..."}],"executiveSummary":"3 משפטים"}`;
+  const txt = await callGroq(sys, `נתח: ${JSON.stringify(input,null,2)}`, state.apiKey);
+  try { return JSON.parse(txt.replace(/```json|```/g,"").trim()); }
+  catch { return { crossTopics:[], systemicProblems:[], opportunities:[], executiveSummary:txt }; }
+}
+
+// ── File Processing ───────────────────────────────────────────────────────────
+async function processFile(file) {
+  const process = (text, fname) => {
+    const messages = parseWhatsApp(text);
+    if (!messages.length) return;
+    state.groups.push({
+      id: `${fname}-${Date.now()}-${Math.random()}`,
+      filename: file.name || fname,
+      messages, messageCount: messages.length,
+      topSenders: getTopSenders(messages),
+      weeklyBuckets: getWeeklyBuckets(messages),
+      silent: detectSilence(messages),
+      name: (file.name||fname).replace(/\.(zip|txt)$/i,"").replace(/[_-]/g," "),
+      context: "", focus: ""
+    });
+  };
+  if ((file.name||"").toLowerCase().endsWith(".zip")) {
+    const buf = await file.arrayBuffer();
+    (await extractTxtFromZip(buf)).forEach(t=>process(t.content, t.filename));
+  } else {
+    process(await file.text(), file.name||"chat.txt");
+  }
+}
+
+async function processBase64(base64, fileName) {
+  const buf = base64ToArrayBuffer(base64);
+  const isZip = fileName.toLowerCase().endsWith(".zip");
+  if (isZip) {
+    (await extractTxtFromZip(buf)).forEach(t => {
+      const messages = parseWhatsApp(t.content);
+      if (!messages.length) return;
+      state.groups.push({
+        id: `${fileName}-${Date.now()}-${Math.random()}`,
+        filename: fileName, messages, messageCount: messages.length,
+        topSenders: getTopSenders(messages), weeklyBuckets: getWeeklyBuckets(messages),
+        silent: detectSilence(messages),
+        name: fileName.replace(/\.(zip|txt)$/i,"").replace(/[_-]/g," "),
+        context: "", focus: ""
+      });
+    });
+  } else {
+    const text = new TextDecoder("utf-8").decode(buf);
+    const messages = parseWhatsApp(text);
+    if (messages.length) {
+      state.groups.push({
+        id: `${fileName}-${Date.now()}`,
+        filename: fileName, messages, messageCount: messages.length,
+        topSenders: getTopSenders(messages), weeklyBuckets: getWeeklyBuckets(messages),
+        silent: detectSilence(messages),
+        name: fileName.replace(/\.(zip|txt)$/i,"").replace(/[_-]/g," "),
+        context: "", focus: ""
+      });
+    }
+  }
+  showToast(`✓ ${fileName} התקבל`);
+  render();
+}
+
+// ── Toast ─────────────────────────────────────────────────────────────────────
+function showToast(msg) {
+  const t = document.getElementById("toast");
+  t.textContent = msg; t.classList.add("show");
+  setTimeout(()=>t.classList.remove("show"), 2500);
+}
+
+// ── Render ────────────────────────────────────────────────────────────────────
+function render() {
+  const app = document.getElementById("app");
+  if (state.view === "summary") { renderSummary(app); return; }
+  if (state.view === "cross") { renderCross(app); return; }
+  renderHome(app);
+}
+
+function renderHome(app) {
+  const readyCount = Object.keys(state.summaries).length;
+  const hasGroups = state.groups.length > 0;
+
+  app.innerHTML = `
+    <div class="header">
+      <div class="header-icon">💬</div>
+      <div>
+        <div class="header-title">WhatsApp Summarizer</div>
+        <div class="header-sub">סיכום חכם לקבוצות עסקיות</div>
+      </div>
+      ${readyCount>0?`<div class="header-badge">${readyCount} מוכנים</div>`:""}
+    </div>
+    <div class="main">
+      ${!state.apiKey ? renderSetup() : ""}
+      ${state.apiKey ? renderDropZone() : ""}
+      ${hasGroups ? renderGroups() : ""}
+      ${readyCount>0 ? renderReadyList() : ""}
+      ${!hasGroups && state.apiKey ? `<div style="text-align:center;padding:32px 0;color:var(--dim);font-size:13px;">
+        <div style="margin-bottom:8px;">ייצא קבוצה מוואצאפ ושתף לאפליקציה</div>
+        <div style="font-size:11px;">פתח קבוצה → ⋮ → ייצוא צ׳אט → ללא מדיה</div>
+      </div>` : ""}
+    </div>`;
+
+  bindHomeEvents();
+}
+
+function renderSetup() {
+  return `<div class="setup-card">
+    <div class="setup-title">🔑 הגדרת Groq API Key</div>
+    <div class="setup-desc">
+      קבל API Key חינמי ב-<a class="setup-link" href="https://console.groq.com/keys" target="_blank">console.groq.com</a> — נדרש רק פעם אחת.
+    </div>
+    <input class="input" id="api-key-input" type="password" placeholder="gsk_..." value="${state.apiKey}" dir="ltr"/>
+    <div style="height:10px"></div>
+    <button class="btn btn-primary" id="save-key-btn">שמור ומשך</button>
+  </div>`;
+}
+
+function renderDropZone() {
+  return `<div class="drop-zone" id="drop-zone">
+    <div class="drop-zone-icon">📁</div>
+    <div class="drop-zone-title">גרור קבצים או לחץ לבחירה</div>
+    <div class="drop-zone-sub">ZIP או TXT מוואצאפ · מספר קבצים</div>
+    <div class="drop-zone-hint">פתח קבוצה ← ⋮ ← ייצוא צ׳אט ← ללא מדיה</div>
+  </div>`;
+}
+
+function renderGroups() {
+  const groupsHtml = state.groups.map(g => {
+    const st = state.progress[g.id];
+    const badge = st ? (st.includes("✓")?`<span class="badge badge-green">${st}</span>`:st.includes("❌")?`<span class="badge badge-red">${st}</span>`:`<span class="badge badge-amber">${st}</span>`) : "";
+    const hasSummary = !!state.summaries[g.id];
+    return `<div class="group-card">
+      <div class="group-card-header">
+        <div class="group-avatar">${(g.name||g.filename).charAt(0).toUpperCase()}</div>
+        <div style="flex:1;min-width:0">
+          <div class="group-filename">${g.filename}</div>
+          <div class="group-count">${g.messageCount} הודעות${g.silent?.length?` · 🔇 ${g.silent.length} נעלמו`:""}</div>
+        </div>
+        ${badge}
+        <button class="group-remove" data-remove="${g.id}">✕</button>
+      </div>
+      <input class="input" style="margin-bottom:8px" data-field="name" data-id="${g.id}" placeholder="שם הקבוצה" value="${g.name||""}" />
+      <input class="input" style="margin-bottom:8px" data-field="context" data-id="${g.id}" placeholder="הקשר / נושא (לקוחות, ספקים, צוות...)" value="${g.context||""}" />
+      <input class="input" data-field="focus" data-id="${g.id}" placeholder="מה לשים דגש? (הזדמנויות, בעיות...)" value="${g.focus||""}" />
+      ${hasSummary?`<button class="btn btn-outline" style="margin-top:10px" data-view="${g.id}">📋 צפה בסיכום ←</button>`:""}
+    </div>`;
+  }).join("");
+
+  const readyCount = Object.keys(state.summaries).length;
+  return `
+    <div>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+        <div style="font-size:13px;font-weight:700;color:var(--muted)">קבוצות (${state.groups.length})</div>
+        <button style="font-size:12px;color:var(--dim);background:none;border:none;cursor:pointer" id="clear-all">נקה הכל</button>
+      </div>
+      ${groupsHtml}
+      <button class="btn btn-primary" id="run-btn" ${state.processing||!state.groups.length?"disabled":""} style="margin-top:4px">
+        ${state.processing?`<span class="spinner"></span> מנתח...`:`✨ סכם ${state.groups.length} קבוצה${state.groups.length!==1?"ות":""}`}
+      </button>
+      ${readyCount>=2?`<button class="btn btn-purple" id="cross-btn" style="margin-top:8px" ${state.crossLoading?"disabled":""}>
+        ${state.crossLoading?`<span class="spinner"></span> מנתח חוצה-קבוצות...`:"🔗 ניתוח cross-קבוצות"}
+      </button>`:""}
+    </div>`;
+}
+
+function renderReadyList() {
+  const ready = state.groups.filter(g=>state.summaries[g.id]);
+  if (!ready.length) return "";
+  return `<div style="margin-top:16px">
+    <div class="section-sep">סיכומים מוכנים</div>
+    ${ready.map(g=>`<div class="ready-card" data-view="${g.id}">
+      <div class="ready-card-row">
+        <span class="ready-card-name">${g.name||g.filename}</span>
+        <div style="display:flex;align-items:center;gap:6px">
+          ${g.silent?.length?`<span class="badge badge-orange">🔇 ${g.silent.length}</span>`:""}
+          <span class="ready-card-arrow">פתח ←</span>
+        </div>
+      </div>
+      <div class="ready-card-preview">${state.summaries[g.id]?.summary||""}</div>
+    </div>`).join("")}
+    ${state.crossResult?`<div class="cross-ready-card" id="open-cross">
+      <div class="ready-card-row">
+        <span class="ready-card-name" style="color:#a78bfa">🔗 ניתוח cross-קבוצות</span>
+        <span style="color:#a78bfa;font-size:13px">פתח ←</span>
+      </div>
+      <div class="ready-card-preview">${state.crossResult.executiveSummary||""}</div>
+    </div>`:""}
+  </div>`;
+}
+
+function bindHomeEvents() {
+  // API Key
+  document.getElementById("save-key-btn")?.addEventListener("click", () => {
+    const val = document.getElementById("api-key-input")?.value.trim();
+    if (val) { state.apiKey = val; localStorage.setItem("groq_key", val); render(); }
+  });
+
+  // Drop zone
+  const dz = document.getElementById("drop-zone");
+  if (dz) {
+    dz.addEventListener("click", () => document.getElementById("file-input").click());
+    dz.addEventListener("dragover", e => { e.preventDefault(); dz.classList.add("drag"); });
+    dz.addEventListener("dragleave", () => dz.classList.remove("drag"));
+    dz.addEventListener("drop", async e => {
+      e.preventDefault(); dz.classList.remove("drag");
+      const files = [...e.dataTransfer.files].filter(f=>f.name.match(/\.(zip|txt)$/i));
+      for (const f of files) await processFile(f);
+      render();
+    });
+  }
+
+  // File input
+  document.getElementById("file-input")?.addEventListener("change", async e => {
+    for (const f of e.target.files) await processFile(f);
+    e.target.value = ""; render();
+  });
+
+  // Group fields
+  document.querySelectorAll("[data-field]").forEach(el => {
+    el.addEventListener("input", () => {
+      const { field, id } = el.dataset;
+      const g = state.groups.find(g=>g.id===id);
+      if (g) g[field] = el.value;
+    });
+  });
+
+  // Remove group
+  document.querySelectorAll("[data-remove]").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const id = btn.dataset.remove;
+      state.groups = state.groups.filter(g=>g.id!==id);
+      delete state.summaries[id]; delete state.progress[id];
+      render();
+    });
+  });
+
+  // View summary
+  document.querySelectorAll("[data-view]").forEach(btn => {
+    btn.addEventListener("click", () => {
+      state.activeGroupId = btn.dataset.view;
+      state.view = "summary"; render();
+    });
+  });
+
+  // Clear all
+  document.getElementById("clear-all")?.addEventListener("click", () => {
+    state.groups=[]; state.summaries={}; state.progress={}; state.crossResult=null; render();
+  });
+
+  // Run summaries
+  document.getElementById("run-btn")?.addEventListener("click", async () => {
+    state.processing = true; render();
+    for (const g of state.groups) {
+      state.progress[g.id] = "מנתח..."; render();
+      try {
+        state.summaries[g.id] = await summarizeGroup(g);
+        state.progress[g.id] = "✓ מוכן";
+      } catch(e) {
+        state.progress[g.id] = `❌ ${e.message||"שגיאה"}`;
+        console.error(e);
+      }
+      render();
+    }
+    state.processing = false; render();
+  });
+
+  // Cross analysis
+  document.getElementById("cross-btn")?.addEventListener("click", async () => {
+    state.crossLoading = true; render();
+    try {
+      state.crossResult = await runCrossAnalysis();
+      state.view = "cross"; render();
+    } catch(e) { console.error(e); }
+    state.crossLoading = false; render();
+  });
+
+  // Open cross
+  document.getElementById("open-cross")?.addEventListener("click", () => {
+    state.view = "cross"; render();
+  });
+}
+
+// ── Summary View ──────────────────────────────────────────────────────────────
+function renderSummary(app) {
+  const group = state.groups.find(g=>g.id===state.activeGroupId);
+  const result = state.summaries[state.activeGroupId];
+  if (!group||!result) { state.view="home"; render(); return; }
+
+  const moodColor = {חיובי:"green",ניטרלי:"blue",מתוח:"red"}[result.mood]||"blue";
+
+  const sectionCard = (title, icon, items, dotColor, cls="") => {
+    if (!items?.length) return `<div class="section-card ${cls}">
+      <div class="section-header"><span class="section-icon">${icon}</span><span class="section-title">${title}</span></div>
+      <div class="section-empty">אין פריטים</div></div>`;
+    return `<div class="section-card ${cls}">
+      <div class="section-header"><span class="section-icon">${icon}</span><span class="section-title">${title}</span><span class="section-count">${items.length}</span></div>
+      <ul class="section-list">${items.map(i=>`<li class="section-item"><span class="section-dot" style="background:${dotColor}"></span>${i}</li>`).join("")}</ul>
+    </div>`;
+  };
+
+  const chartHtml = () => {
+    const buckets = group.weeklyBuckets?.slice(-6)||[];
+    if (!buckets.length) return "";
+    const max = Math.max(...buckets.map(b=>b.count),1);
+    return `<div class="section-card">
+      <div class="section-header"><span class="section-icon">📈</span><span class="section-title">פעילות שבועית</span></div>
+      <div class="chart">${buckets.map((b,i)=>{
+        const pct=(b.count/max)*100;
+        const isLast=i===buckets.length-1;
+        return `<div class="chart-col">
+          <div class="chart-count">${b.count}</div>
+          <div class="chart-bar" style="height:${Math.max(pct,4)}%;background:${isLast?"#10b981":"rgba(16,185,129,0.3)"}"></div>
+          <div class="chart-label">${b.week.slice(5)}</div>
+        </div>`;
+      }).join("")}</div>
+    </div>`;
+  };
+
+  const silenceHtml = () => {
+    if (!group.silent?.length) return "";
+    return `<div class="section-card orange">
+      <div class="section-header"><span class="section-icon">🔇</span><span class="section-title">נעלמו מהשיחה</span></div>
+      ${group.silent.map(s=>`<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+        <span style="font-size:13px;color:rgba(255,255,255,0.75)">${s.name}</span>
+        <span class="badge badge-orange">${s.messagesBefore} הודעות לפני</span>
+      </div>`).join("")}
+    </div>`;
+  };
+
+  const topSendersHtml = () => {
+    if (!group.topSenders?.length) return "";
+    const max=group.topSenders[0].count||1;
+    return `<div class="section-card">
+      <div class="section-header"><span class="section-icon">🏆</span><span class="section-title">טופ 5 מדברים</span></div>
+      ${group.topSenders.map((s,i)=>`<div class="sender-row">
+        <span class="sender-rank">${i+1}</span>
+        <span class="sender-name">${s.name}</span>
+        <div class="sender-bar-bg"><div class="sender-bar" style="width:${(s.count/max)*100}%"></div></div>
+        <span class="sender-count">${s.count}</span>
+      </div>`).join("")}
+    </div>`;
+  };
+
+  app.innerHTML = `
+    <div class="header">
+      <div class="header-icon">💬</div>
+      <div><div class="header-title">סיכום קבוצה</div></div>
+    </div>
+    <div class="main">
+      <div class="nav-back">
+        <button class="back-btn" id="back-btn">← חזור</button>
+        <button class="export-btn" id="copy-btn" style="margin-left:8px">📋 העתק</button>
+        <button class="export-btn" id="export-btn">📄 ייצוא PDF</button>
+      </div>
+
+      <div class="summary-header">
+        <div class="summary-name">${group.name||group.filename}</div>
+        <div class="summary-meta">${group.context||"ללא הגדרת נושא"}</div>
+        <div class="summary-badges">
+          ${result.mood?`<span class="badge badge-${moodColor}">מצב: ${result.mood}</span>`:""}
+          <span class="badge badge-blue">${group.messageCount} הודעות</span>
+          ${group.silent?.length?`<span class="badge badge-orange">🔇 ${group.silent.length} נעלמו</span>`:""}
+        </div>
+        <div class="summary-text">${result.summary}</div>
+      </div>
+
+      ${result.urgentItems?.length?`<div class="section-card urgent">
+        <div class="section-header"><span class="section-icon">🔴</span><span class="section-title">דחוף לטיפול</span><span class="section-count">${result.urgentItems.length}</span></div>
+        <ul class="section-list">${result.urgentItems.map(i=>`<li class="section-item"><span class="section-dot" style="background:#ef4444"></span>${i}</li>`).join("")}</ul>
+      </div>`:""}
+
+      ${chartHtml()}
+      ${sectionCard("מגמות שיח","📈",result.trends,"#2dd4bf")}
+      ${sectionCard("הבטחות שלא קוימו","⚠️",result.brokenPromises,"#f59e0b")}
+      ${sectionCard("בעיות חוזרות","🔁",result.recurringProblems,"#f97316")}
+      ${silenceHtml()}
+      ${sectionCard("משימות ו-Action Items","✅",result.actionItems,"#10b981")}
+      ${sectionCard("תובנות עסקיות","💡",result.businessInsights,"#fbbf24")}
+      ${sectionCard("החלטות מרכזיות","🎯",result.keyDecisions,"#60a5fa")}
+      ${sectionCard("שאלות פתוחות","❓",result.openQuestions,"#a78bfa")}
+      ${topSendersHtml()}
+    </div>`;
+
+  document.getElementById("back-btn").addEventListener("click", () => { state.view="home"; render(); });
+  document.getElementById("export-btn").addEventListener("click", () => printSummary(group, result));
+  document.getElementById("copy-btn").addEventListener("click", () => {
+    const text = summaryToText(group, result);
+    navigator.clipboard.writeText(text).then(() => showToast("✓ הועתק ללוח"));
+  });
+}
+
+function summaryToText(group, result) {
+  const sec = (title, items) => items?.length ? `\n${title}:\n${items.map(i=>`• ${i}`).join("\n")}` : "";
+  return `סיכום: ${group.name}\n${group.messageCount} הודעות | מצב: ${result.mood||"—"}\n\n${result.summary||""}` +
+    sec("דחוף", result.urgentItems) + sec("משימות", result.actionItems) +
+    sec("הבטחות שלא קוימו", result.brokenPromises) + sec("מגמות", result.trends) +
+    sec("בעיות חוזרות", result.recurringProblems) + sec("שאלות פתוחות", result.openQuestions) +
+    sec("תובנות עסקיות", result.businessInsights) + sec("החלטות", result.keyDecisions);
+}
+
+function printSummary(group, result) {
+  const w = window.open("","_blank");
+  w.document.write(`<html dir="rtl"><head><meta charset="utf-8"><title>סיכום - ${group.name}</title>
+  <style>body{font-family:Arial,sans-serif;max-width:800px;margin:40px auto;color:#111;line-height:1.7}
+  h1{color:#059669;border-bottom:2px solid #059669;padding-bottom:8px}
+  h2{color:#374151;font-size:16px;margin-top:28px}ul{padding-right:20px}li{margin-bottom:6px}
+  .box{background:#f0fdf4;border-right:4px solid #059669;padding:16px;border-radius:4px;margin:16px 0}
+  .meta{color:#6b7280;font-size:13px;margin-bottom:20px}</style></head><body>
+  <h1>📋 סיכום: ${group.name}</h1>
+  <div class="meta">${new Date().toLocaleDateString("he-IL")} | ${group.messageCount} הודעות | מצב: ${result.mood||"—"}</div>
+  <div class="box">${result.summary}</div>
+  ${result.urgentItems?.length?`<h2>🔴 דחוף</h2><ul>${result.urgentItems.map(i=>`<li>${i}</li>`).join("")}</ul>`:""}
+  ${result.actionItems?.length?`<h2>✅ משימות</h2><ul>${result.actionItems.map(i=>`<li>${i}</li>`).join("")}</ul>`:""}
+  ${result.brokenPromises?.length?`<h2>⚠️ הבטחות שלא קוימו</h2><ul>${result.brokenPromises.map(i=>`<li>${i}</li>`).join("")}</ul>`:""}
+  ${result.trends?.length?`<h2>📈 מגמות</h2><ul>${result.trends.map(i=>`<li>${i}</li>`).join("")}</ul>`:""}
+  ${result.recurringProblems?.length?`<h2>🔁 בעיות חוזרות</h2><ul>${result.recurringProblems.map(i=>`<li>${i}</li>`).join("")}</ul>`:""}
+  ${result.openQuestions?.length?`<h2>❓ שאלות פתוחות</h2><ul>${result.openQuestions.map(i=>`<li>${i}</li>`).join("")}</ul>`:""}
+  ${result.businessInsights?.length?`<h2>💡 תובנות עסקיות</h2><ul>${result.businessInsights.map(i=>`<li>${i}</li>`).join("")}</ul>`:""}
+  ${group.silent?.length?`<h2>🔇 נעלמו</h2><ul>${group.silent.map(s=>`<li>${s.name} (${s.messagesBefore} הודעות לפני)</li>`).join("")}</ul>`:""}
+  ${group.topSenders?.length?`<h2>🏆 טופ מדברים</h2><ul>${group.topSenders.map(s=>`<li>${s.name} — ${s.count}</li>`).join("")}</ul>`:""}
+  </body></html>`);
+  w.document.close(); w.print();
+}
+
+// ── Cross View ────────────────────────────────────────────────────────────────
+function renderCross(app) {
+  const c = state.crossResult;
+  if (!c) { state.view="home"; render(); return; }
+
+  const sectionCard = (title, icon, items, dotColor) => {
+    if (!items?.length) return "";
+    return `<div class="section-card">
+      <div class="section-header"><span class="section-icon">${icon}</span><span class="section-title">${title}</span><span class="section-count">${items.length}</span></div>
+      <ul class="section-list">${items.map(i=>`<li class="section-item"><span class="section-dot" style="background:${dotColor}"></span>${i}</li>`).join("")}</ul>
+    </div>`;
+  };
+
+  app.innerHTML = `
+    <div class="header">
+      <div class="header-icon">🔗</div>
+      <div><div class="header-title">ניתוח Cross-קבוצות</div></div>
+    </div>
+    <div class="main">
+      <div class="nav-back">
+        <button class="back-btn" id="back-btn">← חזור</button>
+        <span class="badge badge-purple">${state.groups.filter(g=>state.summaries[g.id]).length} קבוצות</span>
+      </div>
+
+      ${c.executiveSummary?`<div class="summary-header">
+        <div class="summary-badges"><span class="badge badge-purple">סיכום מנהלים</span></div>
+        <div class="summary-text">${c.executiveSummary}</div>
+      </div>`:""}
+
+      ${sectionCard("בעיות מערכתיות","🚨",c.systemicProblems,"#ef4444")}
+      ${sectionCard("הזדמנויות מכמה מקורות","🚀",c.opportunities,"#10b981")}
+
+      ${c.crossTopics?.length?`<div class="section-card">
+        <div class="section-header"><span class="section-icon">🔗</span><span class="section-title">נושאים משותפים</span><span class="section-count">${c.crossTopics.length}</span></div>
+        ${c.crossTopics.map(t=>`<div class="cross-topic">
+          <div class="cross-topic-title">${t.topic}</div>
+          <div class="cross-topic-badges">${(t.groups||[]).map(g=>`<span class="badge badge-purple">${g}</span>`).join("")}</div>
+          <div class="cross-topic-insight">${t.insight}</div>
+        </div>`).join("")}
+      </div>`:""}
+
+      ${c.peopleInMultipleGroups?.length?`<div class="section-card">
+        <div class="section-header"><span class="section-icon">👥</span><span class="section-title">אנשים בכמה קבוצות</span></div>
+        ${c.peopleInMultipleGroups.map(p=>`<div style="margin-bottom:12px">
+          <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:4px">
+            <span style="font-size:14px;font-weight:600">${p.name}</span>
+            ${(p.groups||[]).map(g=>`<span class="badge badge-blue">${g}</span>`).join("")}
+          </div>
+          <div style="font-size:12px;color:var(--muted)">${p.context}</div>
+        </div>`).join("")}
+      </div>`:""}
+    </div>`;
+
+  document.getElementById("back-btn").addEventListener("click", () => { state.view="home"; render(); });
+}
+
+// ── Service Worker + Share Target ─────────────────────────────────────────────
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.register("/sw.js").then(() => {
+    navigator.serviceWorker.addEventListener("message", async e => {
+      if (e.data?.type === "SHARED_FILE") {
+        await processBase64(e.data.base64, e.data.fileName);
+      }
+    });
+  });
+
+  // Check for pending share from SW cache
+  window.addEventListener("load", async () => {
+    if (navigator.serviceWorker.controller) {
+      const cache = await caches.open("wa-summarizer-v1");
+      const pending = await cache.match("/__pending_share__");
+      if (pending) {
+        const { base64, fileName } = await pending.json();
+        await cache.delete("/__pending_share__");
+        await processBase64(base64, fileName);
+      }
+    }
+  });
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+render();
+</script>
+</body>
+</html>
