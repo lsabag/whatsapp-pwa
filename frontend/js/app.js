@@ -1,5 +1,5 @@
 // ── State ────────────────────────────────────────────────────────────────────
-const VERSION = "v2.1.0";
+const VERSION = "v2.1.1";
 const state = {
   view: "home",       // home | summary | cross | dashboard
   apiKey: "",
@@ -165,15 +165,15 @@ function renderDropZone() {
   </div>`;
 }
 
-function datePresetButtons(gId) {
-  return `<div class="date-presets" data-group="${gId}">
-    <button class="date-preset active" data-preset="all">הכל</button>
-    <button class="date-preset" data-preset="week">השבוע</button>
-    <button class="date-preset" data-preset="month">החודש</button>
-    <button class="date-preset" data-preset="3months">3 חודשים</button>
-    <button class="date-preset" data-preset="6months">חצי שנה</button>
-    <button class="date-preset" data-preset="custom">בחירה</button>
-  </div>`;
+function dateRangeSelect(gId, preset) {
+  return `<select class="input input-sm date-select" data-dateselect="${gId}" style="margin-top:8px">
+    <option value="all" ${preset !== "custom" && preset !== "week" && preset !== "month" && preset !== "3months" && preset !== "6months" ? "selected" : ""}>כל ההודעות</option>
+    <option value="week" ${preset === "week" ? "selected" : ""}>השבוע האחרון</option>
+    <option value="month" ${preset === "month" ? "selected" : ""}>החודש האחרון</option>
+    <option value="3months" ${preset === "3months" ? "selected" : ""}>3 חודשים אחרונים</option>
+    <option value="6months" ${preset === "6months" ? "selected" : ""}>חצי שנה אחרונה</option>
+    <option value="custom" ${preset === "custom" ? "selected" : ""}>בחירת תאריכים...</option>
+  </select>`;
 }
 
 function getPresetDates(preset, maxDate) {
@@ -221,7 +221,7 @@ function renderGroups() {
       <input class="input" style="margin-bottom:8px" data-field="name" data-id="${g.id}" placeholder="שם הקבוצה" value="${g.name || ""}" />
       <input class="input" style="margin-bottom:8px" data-field="context" data-id="${g.id}" placeholder="הקשר / נושא (לקוחות, ספקים, צוות...)" value="${g.context || ""}" />
       <input class="input" data-field="focus" data-id="${g.id}" placeholder="מה לשים דגש? (הזדמנויות, בעיות...)" value="${g.focus || ""}" />
-      ${datePresetButtons(g.id)}
+      ${dateRangeSelect(g.id, g.datePreset || "all")}
       ${showCustom ? `<div class="date-range">
         <input type="date" class="input" data-field="dateFrom" data-id="${g.id}" value="${g.dateFrom || ""}" min="${g.dateMin || ""}" max="${g.dateMax || ""}" />
         <input type="date" class="input" data-field="dateTo" data-id="${g.id}" value="${g.dateTo || ""}" min="${g.dateMin || ""}" max="${g.dateMax || ""}" />
@@ -318,26 +318,24 @@ function bindHomeEvents() {
     });
   });
 
-  // Date preset buttons
-  document.querySelectorAll(".date-presets").forEach(container => {
-    const gId = container.dataset.group;
-    container.querySelectorAll(".date-preset").forEach(btn => {
-      btn.addEventListener("click", () => {
-        const g = state.groups.find(g => g.id === gId);
-        if (!g) return;
-        const preset = btn.dataset.preset;
-        g.datePreset = preset;
-        if (preset === "all") {
-          g.dateFrom = g.dateMin; g.dateTo = g.dateMax;
-        } else if (preset === "custom") {
-          // keep current values, show pickers
-        } else {
-          const { from, to } = getPresetDates(preset, g.dateMax);
-          g.dateFrom = from < g.dateMin ? g.dateMin : from;
-          g.dateTo = to;
-        }
-        render();
-      });
+  // Date range dropdown
+  document.querySelectorAll("[data-dateselect]").forEach(sel => {
+    sel.addEventListener("change", () => {
+      const gId = sel.dataset.dateselect;
+      const g = state.groups.find(g => g.id === gId);
+      if (!g) return;
+      g.datePreset = sel.value;
+      if (sel.value === "all") {
+        g.dateFrom = null; g.dateTo = null;
+      } else if (sel.value === "custom") {
+        g.dateFrom = g.dateFrom || g.dateMin;
+        g.dateTo = g.dateTo || g.dateMax;
+      } else {
+        const { from, to } = getPresetDates(sel.value, g.dateMax);
+        g.dateFrom = from < g.dateMin ? g.dateMin : from;
+        g.dateTo = to;
+      }
+      render();
     });
   });
 
@@ -603,20 +601,27 @@ function renderDashboardContent(d) {
         </div>
         <button class="group-remove" data-delete-group="${g.id}">✕</button>
       </div>
-      ${g.summaries.length ? g.summaries.slice(0, 5).map(s => `<div class="dash-summary-row" data-view-summary='${JSON.stringify({ groupId: g.id, result: s.result })}'>
-        <span class="dash-summary-date">${formatDate(s.created_at)}</span>
-        <span class="dash-summary-range">${s.date_from && s.date_to ? `${s.date_from} → ${s.date_to}` : "טווח מלא"}</span>
-        <span class="dash-summary-mood">${s.result.mood ? `<span class="badge badge-${{ חיובי: "green", ניטרלי: "blue", מתוח: "red" }[s.result.mood] || "blue"}">${s.result.mood}</span>` : ""}</span>
-        <span style="color:var(--green);font-size:12px">←</span>
-      </div>`).join("") : `<div style="font-size:12px;color:var(--dim);padding:8px">לא סוכם עדיין</div>`}
-      <div class="date-presets" data-dash-group="${g.id}">
-        <button class="date-preset active" data-preset="all">הכל</button>
-        <button class="date-preset" data-preset="week">השבוע</button>
-        <button class="date-preset" data-preset="month">החודש</button>
-        <button class="date-preset" data-preset="3months">3 חודשים</button>
-        <button class="date-preset" data-preset="6months">חצי שנה</button>
-        <button class="date-preset" data-preset="custom">בחירה</button>
-      </div>
+      ${g.summaries.length ? g.summaries.slice(0, 5).map(s => {
+        const time = new Date(s.created_at).toLocaleTimeString("he-IL", { hour: "2-digit", minute: "2-digit" });
+        const range = s.date_from && s.date_to ? `${s.date_from} → ${s.date_to}` : "טווח מלא";
+        const msgs = s.message_count ? `${s.message_count} הודעות` : "";
+        return `<div class="dash-summary-row" data-view-summary='${JSON.stringify({ groupId: g.id, result: s.result })}'>
+          <div style="flex:1;min-width:0">
+            <div style="font-size:12px;color:var(--text)">${range}</div>
+            <div style="font-size:10px;color:var(--dim)">${formatDate(s.created_at)} ${time}${msgs ? ` · ${msgs}` : ""}</div>
+          </div>
+          ${s.result.mood ? `<span class="badge badge-${{ חיובי: "green", ניטרלי: "blue", מתוח: "red" }[s.result.mood] || "blue"}">${s.result.mood}</span>` : ""}
+          <span style="color:var(--green);font-size:12px">←</span>
+        </div>`;
+      }).join("") : `<div style="font-size:12px;color:var(--dim);padding:8px">לא סוכם עדיין</div>`}
+      <select class="input input-sm" data-dash-dateselect="${g.id}" style="margin-top:8px">
+        <option value="all" selected>כל ההודעות</option>
+        <option value="week">השבוע האחרון</option>
+        <option value="month">החודש האחרון</option>
+        <option value="3months">3 חודשים אחרונים</option>
+        <option value="6months">חצי שנה אחרונה</option>
+        <option value="custom">בחירת תאריכים...</option>
+      </select>
       <div class="date-range" id="custom-dates-${g.id}" style="display:none">
         <input type="date" class="input" id="dash-from-${g.id}" value="${g.first_message_date || ""}" min="${g.first_message_date || ""}" max="${g.last_message_date || ""}" />
         <input type="date" class="input" id="dash-to-${g.id}" value="${g.last_message_date || ""}" min="${g.first_message_date || ""}" max="${g.last_message_date || ""}" />
@@ -673,30 +678,25 @@ function bindDashboardEvents(d) {
     });
   });
 
-  // Dashboard date presets
-  const dashDates = {}; // groupId -> { from, to }
-  document.querySelectorAll("[data-dash-group]").forEach(container => {
-    const gId = container.dataset.dashGroup;
+  // Dashboard date selects
+  const dashDates = {};
+  document.querySelectorAll("[data-dash-dateselect]").forEach(sel => {
+    const gId = sel.dataset.dashDateselect;
     dashDates[gId] = { from: null, to: null };
-    container.querySelectorAll(".date-preset").forEach(btn => {
-      btn.addEventListener("click", () => {
-        container.querySelectorAll(".date-preset").forEach(b => b.classList.remove("active"));
-        btn.classList.add("active");
-        const preset = btn.dataset.preset;
-        const g = d.groups.find(g => g.id === gId);
-        const customEl = document.getElementById(`custom-dates-${gId}`);
-        if (preset === "custom") {
-          if (customEl) customEl.style.display = "flex";
+    sel.addEventListener("change", () => {
+      const g = d.groups.find(g => g.id === gId);
+      const customEl = document.getElementById(`custom-dates-${gId}`);
+      if (sel.value === "custom") {
+        if (customEl) customEl.style.display = "flex";
+      } else {
+        if (customEl) customEl.style.display = "none";
+        if (sel.value === "all") {
+          dashDates[gId] = { from: null, to: null };
         } else {
-          if (customEl) customEl.style.display = "none";
-          if (preset === "all") {
-            dashDates[gId] = { from: null, to: null };
-          } else {
-            const { from, to } = getPresetDates(preset, g?.last_message_date);
-            dashDates[gId] = { from, to };
-          }
+          const { from, to } = getPresetDates(sel.value, g?.last_message_date);
+          dashDates[gId] = { from, to };
         }
-      });
+      }
     });
   });
 

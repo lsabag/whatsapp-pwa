@@ -138,18 +138,8 @@ html, body {
 .group-remove { margin-right: auto; color: var(--dim); font-size: 16px; background: none; border: none; cursor: pointer; padding: 4px; }
 .group-remove:active { color: var(--red); }
 
-/* Date presets */
-.date-presets { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
-.date-preset {
-  padding: 5px 12px; border-radius: 10px; font-size: 11px; font-weight: 600;
-  font-family: inherit; border: 1px solid var(--border); background: transparent;
-  color: var(--muted); cursor: pointer; transition: all 0.15s;
-  -webkit-tap-highlight-color: transparent;
-}
-.date-preset:active { transform: scale(0.95); }
-.date-preset.active {
-  background: var(--green-dim); border-color: var(--green-border); color: var(--green);
-}
+/* Date select */
+.date-select { -webkit-appearance: none; appearance: none; cursor: pointer; }
 
 /* Date range */
 .date-range { display: flex; gap: 8px; margin-top: 8px; }
