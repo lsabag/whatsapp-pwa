@@ -1,5 +1,5 @@
 // ── State ────────────────────────────────────────────────────────────────────
-const VERSION = "v2.0.1";
+const VERSION = "v2.1.0";
 const state = {
   view: "home",       // home | summary | cross | dashboard
   apiKey: "",
@@ -165,10 +165,49 @@ function renderDropZone() {
   </div>`;
 }
 
+function datePresetButtons(gId) {
+  return `<div class="date-presets" data-group="${gId}">
+    <button class="date-preset active" data-preset="all">הכל</button>
+    <button class="date-preset" data-preset="week">השבוע</button>
+    <button class="date-preset" data-preset="month">החודש</button>
+    <button class="date-preset" data-preset="3months">3 חודשים</button>
+    <button class="date-preset" data-preset="6months">חצי שנה</button>
+    <button class="date-preset" data-preset="custom">בחירה</button>
+  </div>`;
+}
+
+function getPresetDates(preset, maxDate) {
+  const to = maxDate || new Date().toISOString().slice(0, 10);
+  const d = new Date(to);
+  switch (preset) {
+    case "week": d.setDate(d.getDate() - 7); break;
+    case "month": d.setMonth(d.getMonth() - 1); break;
+    case "3months": d.setMonth(d.getMonth() - 3); break;
+    case "6months": d.setMonth(d.getMonth() - 6); break;
+    default: return { from: null, to: null };
+  }
+  return { from: d.toISOString().slice(0, 10), to };
+}
+
+function countMessagesInRange(messages, from, to) {
+  if (!from && !to) return messages.length;
+  return messages.filter(m => {
+    const d = parseDateStr(m.date);
+    if (!d) return false;
+    const iso = toISODate(d);
+    if (from && iso < from) return false;
+    if (to && iso > to) return false;
+    return true;
+  }).length;
+}
+
 function renderGroups() {
   const groupsHtml = state.groups.map(g => {
     const st = state.progress[g.id];
     const badge = st ? (st.includes("✓") ? `<span class="badge badge-green">${st}</span>` : st.includes("❌") ? `<span class="badge badge-red">${st}</span>` : `<span class="badge badge-amber">${st}</span>`) : "";
+    const showCustom = g.datePreset === "custom";
+    const filteredCount = countMessagesInRange(g.messages, g.dateFrom, g.dateTo);
+    const isFiltered = g.dateFrom || g.dateTo;
     return `<div class="group-card">
       <div class="group-card-header">
         <div class="group-avatar">${(g.name || g.filename).charAt(0).toUpperCase()}</div>
@@ -182,11 +221,12 @@ function renderGroups() {
       <input class="input" style="margin-bottom:8px" data-field="name" data-id="${g.id}" placeholder="שם הקבוצה" value="${g.name || ""}" />
       <input class="input" style="margin-bottom:8px" data-field="context" data-id="${g.id}" placeholder="הקשר / נושא (לקוחות, ספקים, צוות...)" value="${g.context || ""}" />
       <input class="input" data-field="focus" data-id="${g.id}" placeholder="מה לשים דגש? (הזדמנויות, בעיות...)" value="${g.focus || ""}" />
-      <div class="date-range">
+      ${datePresetButtons(g.id)}
+      ${showCustom ? `<div class="date-range">
         <input type="date" class="input" data-field="dateFrom" data-id="${g.id}" value="${g.dateFrom || ""}" min="${g.dateMin || ""}" max="${g.dateMax || ""}" />
         <input type="date" class="input" data-field="dateTo" data-id="${g.id}" value="${g.dateTo || ""}" min="${g.dateMin || ""}" max="${g.dateMax || ""}" />
-      </div>
-      <div class="date-range-info">${g.dateMin ? `טווח: ${g.dateMin} עד ${g.dateMax}` : ""}</div>
+      </div>` : ""}
+      ${isFiltered ? `<div class="date-range-info">${filteredCount} מתוך ${g.messageCount} הודעות בטווח שנבחר</div>` : ""}
     </div>`;
   }).join("");
 
@@ -275,6 +315,29 @@ function bindHomeEvents() {
       const { field, id } = el.dataset;
       const g = state.groups.find(g => g.id === id);
       if (g) g[field] = el.value;
+    });
+  });
+
+  // Date preset buttons
+  document.querySelectorAll(".date-presets").forEach(container => {
+    const gId = container.dataset.group;
+    container.querySelectorAll(".date-preset").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const g = state.groups.find(g => g.id === gId);
+        if (!g) return;
+        const preset = btn.dataset.preset;
+        g.datePreset = preset;
+        if (preset === "all") {
+          g.dateFrom = g.dateMin; g.dateTo = g.dateMax;
+        } else if (preset === "custom") {
+          // keep current values, show pickers
+        } else {
+          const { from, to } = getPresetDates(preset, g.dateMax);
+          g.dateFrom = from < g.dateMin ? g.dateMin : from;
+          g.dateTo = to;
+        }
+        render();
+      });
     });
   });
 
@@ -546,7 +609,19 @@ function renderDashboardContent(d) {
         <span class="dash-summary-mood">${s.result.mood ? `<span class="badge badge-${{ חיובי: "green", ניטרלי: "blue", מתוח: "red" }[s.result.mood] || "blue"}">${s.result.mood}</span>` : ""}</span>
         <span style="color:var(--green);font-size:12px">←</span>
       </div>`).join("") : `<div style="font-size:12px;color:var(--dim);padding:8px">לא סוכם עדיין</div>`}
-      <button class="btn btn-primary btn-sm" style="margin-top:8px" data-resummarize="${g.id}">✨ סכם מחדש</button>
+      <div class="date-presets" data-dash-group="${g.id}">
+        <button class="date-preset active" data-preset="all">הכל</button>
+        <button class="date-preset" data-preset="week">השבוע</button>
+        <button class="date-preset" data-preset="month">החודש</button>
+        <button class="date-preset" data-preset="3months">3 חודשים</button>
+        <button class="date-preset" data-preset="6months">חצי שנה</button>
+        <button class="date-preset" data-preset="custom">בחירה</button>
+      </div>
+      <div class="date-range" id="custom-dates-${g.id}" style="display:none">
+        <input type="date" class="input" id="dash-from-${g.id}" value="${g.first_message_date || ""}" min="${g.first_message_date || ""}" max="${g.last_message_date || ""}" />
+        <input type="date" class="input" id="dash-to-${g.id}" value="${g.last_message_date || ""}" min="${g.first_message_date || ""}" max="${g.last_message_date || ""}" />
+      </div>
+      <button class="btn btn-primary btn-sm" style="margin-top:8px" data-resummarize="${g.id}" data-max-date="${g.last_message_date || ""}">✨ סכם</button>
     </div>`).join("")}
 
     ${d.crossAnalyses?.length ? `
@@ -598,15 +673,53 @@ function bindDashboardEvents(d) {
     });
   });
 
-  // Re-summarize
+  // Dashboard date presets
+  const dashDates = {}; // groupId -> { from, to }
+  document.querySelectorAll("[data-dash-group]").forEach(container => {
+    const gId = container.dataset.dashGroup;
+    dashDates[gId] = { from: null, to: null };
+    container.querySelectorAll(".date-preset").forEach(btn => {
+      btn.addEventListener("click", () => {
+        container.querySelectorAll(".date-preset").forEach(b => b.classList.remove("active"));
+        btn.classList.add("active");
+        const preset = btn.dataset.preset;
+        const g = d.groups.find(g => g.id === gId);
+        const customEl = document.getElementById(`custom-dates-${gId}`);
+        if (preset === "custom") {
+          if (customEl) customEl.style.display = "flex";
+        } else {
+          if (customEl) customEl.style.display = "none";
+          if (preset === "all") {
+            dashDates[gId] = { from: null, to: null };
+          } else {
+            const { from, to } = getPresetDates(preset, g?.last_message_date);
+            dashDates[gId] = { from, to };
+          }
+        }
+      });
+    });
+  });
+
+  // Re-summarize with date range
   document.querySelectorAll("[data-resummarize]").forEach(el => {
     el.addEventListener("click", async () => {
       const groupId = el.dataset.resummarize;
+      let dateFrom = dashDates[groupId]?.from || null;
+      let dateTo = dashDates[groupId]?.to || null;
+      // Check custom date inputs
+      const fromInput = document.getElementById(`dash-from-${groupId}`);
+      const toInput = document.getElementById(`dash-to-${groupId}`);
+      const customEl = document.getElementById(`custom-dates-${groupId}`);
+      if (customEl && customEl.style.display !== "none") {
+        dateFrom = fromInput?.value || null;
+        dateTo = toInput?.value || null;
+      }
       el.disabled = true;
       el.innerHTML = `<span class="spinner"></span> מסכם...`;
       try {
-        await API.summarize(groupId);
+        await API.summarize(groupId, dateFrom, dateTo);
         state.dashboard = await API.getDashboard();
+        notifyOtherTabs();
         showToast("✓ סיכום חדש נוצר");
       } catch (e) { showToast(`❌ ${e.message}`); }
       render();

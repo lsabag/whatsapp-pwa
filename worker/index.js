@@ -87,8 +87,14 @@ async function getGroup(id, env) {
 
 async function createGroup(request, env) {
   const body = await request.json();
-  const { id, name, filename, context, focus, messages } = body;
+  let { id, name, filename, context, focus, messages } = body;
   const now = Date.now();
+
+  // Check if a group with the same name already exists — reuse its ID to keep summaries
+  const existing = await env.DB.prepare("SELECT id, created_at FROM groups WHERE name = ?").bind(name).first();
+  if (existing) {
+    id = existing.id;
+  }
 
   // Parse dates to find range
   const dates = messages.map(m => parseDate(m.date)).filter(Boolean).sort((a, b) => a - b);
@@ -98,11 +104,10 @@ async function createGroup(request, env) {
   await env.DB.prepare(
     `INSERT OR REPLACE INTO groups (id, name, filename, context, focus, message_count, first_message_date, last_message_date, created_at, updated_at)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-  ).bind(id, name, filename, context || "", focus || "", messages.length, firstDate, lastDate, now, now).run();
+  ).bind(id, name, filename, context || "", focus || "", messages.length, firstDate, lastDate, existing ? existing.created_at : now, now).run();
 
-  // Insert messages in batches
+  // Replace messages (summaries are kept)
   const batchSize = 50;
-  // First delete existing messages for this group (in case of re-upload)
   await env.DB.prepare("DELETE FROM messages WHERE group_id = ?").bind(id).run();
 
   for (let i = 0; i < messages.length; i += batchSize) {
