@@ -1,4 +1,4 @@
-const CACHE = "wa-summarizer-v5";
+const CACHE = "wa-summarizer-v6";
 const ASSETS = ["/", "/index.html", "/manifest.json", "/css/style.css", "/js/parser.js", "/js/api.js", "/js/app.js"];
 
 // Install
@@ -69,8 +69,8 @@ self.addEventListener("fetch", e => {
     return;
   }
 
-  // HTML: network first. Other assets: cache first.
-  if (e.request.mode === "navigate" || e.request.destination === "document") {
+  // HTML + JS: network first, cache fallback.
+  if (e.request.mode === "navigate" || e.request.destination === "document" || e.request.destination === "script") {
     e.respondWith(
       fetch(e.request).then(res => {
         const clone = res.clone();

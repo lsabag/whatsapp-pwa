@@ -660,7 +660,7 @@ if ("serviceWorker" in navigator) {
 
   async function checkPendingShare() {
     try {
-      const cache = await caches.open("wa-summarizer-v5");
+      const cache = await caches.open("wa-summarizer-v6");
       const pending = await cache.match("/__pending_share__");
       if (pending) {
         const data = await pending.json();
