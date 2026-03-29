@@ -201,10 +201,12 @@ async function summarize(request, env) {
   const partials = [];
 
   const sysChunk = `אתה מנתח שיחות WhatsApp לאנשי עסקים. ענה בעברית בלבד. החזר JSON בלבד ללא backticks ולא כלום אחר.
-{"summary":"תקציר 2-3 משפטים","actionItems":["..."],"openQuestions":["..."],"businessInsights":["..."],"keyDecisions":["..."],"mood":"חיובי/ניטרלי/מתוח","urgentItems":["..."],"trends":["..."],"brokenPromises":["..."],"recurringProblems":["..."]}`;
+חשוב מאוד: ציין כל נושא שעלה בשיחה, גם אם הוא קטן. אל תדלג על שום נושא.
+רשום כמה שיותר פריטים בכל שדה — עדיף יותר מדי מאשר פחות מדי.
+{"topics":["נושא 1","נושא 2","נושא 3","...כל הנושאים שעלו"],"summary":"תקציר 3-5 משפטים מפורט","actionItems":["..."],"openQuestions":["..."],"businessInsights":["..."],"keyDecisions":["..."],"mood":"חיובי/ניטרלי/מתוח","urgentItems":["..."],"trends":["..."],"brokenPromises":["..."],"recurringProblems":["..."]}`;
 
   for (let i = 0; i < chunks.length; i++) {
-    if (i > 0) await sleep(3000); // Rate limit protection
+    if (i > 0) await sleep(3000);
     const chatText = chunks[i].map(m => `[${m.date} ${m.time}] ${m.sender}: ${m.text}`).join("\n");
     const userMsg = `קבוצה: "${group.name}" | חלק ${i + 1}/${chunks.length}\n${chatText}`;
     partials.push(parseGroqResult(await callGroq(sysChunk, userMsg, apiKey)));
@@ -215,7 +217,9 @@ async function summarize(request, env) {
     result = partials[0];
   } else {
     const sysMerge = `אתה ממזג סיכומי חלקים של שיחת WhatsApp לסיכום אחד מקיף. ענה בעברית בלבד. החזר JSON בלבד ללא backticks ולא כלום אחר.
-{"summary":"תקציר 3-5 משפטים","actionItems":["..."],"openQuestions":["..."],"businessInsights":["..."],"keyDecisions":["..."],"mood":"חיובי/ניטרלי/מתוח","urgentItems":["..."],"trends":["מגמה 1","מגמה 2"],"brokenPromises":["הבטחה שלא קוימה"],"recurringProblems":["בעיה חוזרת"]}`;
+חשוב מאוד: שמור על כל הנושאים מכל החלקים. אל תשמיט שום נושא, גם אם הוא מוזכר רק בחלק אחד.
+מזג את כל הפריטים מכל החלקים — עדיף רשימה ארוכה ומלאה מאשר קצרה וחסרה.
+{"topics":["כל הנושאים שעלו בכל החלקים"],"summary":"תקציר מקיף 5-8 משפטים שמכסה את כל הנושאים","actionItems":["כל המשימות"],"openQuestions":["כל השאלות"],"businessInsights":["כל התובנות"],"keyDecisions":["כל ההחלטות"],"mood":"חיובי/ניטרלי/מתוח","urgentItems":["כל הדחופים"],"trends":["כל המגמות"],"brokenPromises":["כל ההבטחות"],"recurringProblems":["כל הבעיות"]}`;
     const mergeInput = `קבוצה: "${group.name}" | נושא: ${group.context || "כללי"} | דגש: ${group.focus || "הכל"}
 סה"כ: ${msgs.length} הודעות | טופ: ${topSenders.map(([n, c]) => `${n}(${c})`).join(", ")}
 סיכומי חלקים:\n${partials.map((p, i) => `חלק ${i + 1}: ${JSON.stringify(p)}`).join("\n")}`;
@@ -317,7 +321,7 @@ async function callGroq(system, user, key, retries = 3) {
       body: JSON.stringify({
         model: "llama-3.3-70b-versatile",
         temperature: 0.3,
-        max_tokens: 1500,
+        max_tokens: 3000,
         messages: [{ role: "system", content: system }, { role: "user", content: user }]
       })
     });

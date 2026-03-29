@@ -1,5 +1,5 @@
 // ── State ────────────────────────────────────────────────────────────────────
-const VERSION = "v2.1.1";
+const VERSION = "v2.2.0";
 const state = {
   view: "home",       // home | summary | cross | dashboard
   apiKey: "",
@@ -436,6 +436,8 @@ function renderSummary(app) {
         </div>
         <div class="summary-text">${result.summary}</div>
       </div>
+
+      ${sectionCard("נושאים שעלו", "💬", result.topics, "#14b8a6")}
 
       ${result.urgentItems?.length ? `<div class="section-card urgent">
         <div class="section-header"><span class="section-icon">🔴</span><span class="section-title">דחוף לטיפול</span><span class="section-count">${result.urgentItems.length}</span></div>
