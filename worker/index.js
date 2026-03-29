@@ -48,6 +48,12 @@ async function handleAPI(url, request, env) {
   if (path === "/api/cross-analyze" && method === "POST") return crossAnalyze(request, env);
   if (path === "/api/cross-analyses" && method === "GET") return getCrossAnalyses(env);
 
+  // Topic scan
+  if (path === "/api/scan-topics" && method === "POST") return scanTopics(request, env);
+
+  // Message search by topic
+  if (path.match(/^\/api\/groups\/[^/]+\/search$/) && method === "GET") return searchMessages(path.split("/")[3], url, env);
+
   // Dashboard
   if (path === "/api/dashboard" && method === "GET") return getDashboard(env);
 
@@ -289,6 +295,70 @@ async function crossAnalyze(request, env) {
 async function getCrossAnalyses(env) {
   const rows = await env.DB.prepare("SELECT * FROM cross_analyses ORDER BY created_at DESC").all();
   return json(rows.results.map(r => ({ ...r, result: JSON.parse(r.result), group_ids: JSON.parse(r.group_ids) })));
+}
+
+// ── Topic Scan ─────────────────────────────────────────────────────────────
+
+async function scanTopics(request, env) {
+  const body = await request.json();
+  const { groupId, dateFrom, dateTo } = body;
+
+  const keyRow = await env.DB.prepare("SELECT value FROM settings WHERE key = 'groq_key'").first();
+  if (!keyRow) return json({ error: "API Key לא מוגדר" }, 400);
+
+  const group = await env.DB.prepare("SELECT * FROM groups WHERE id = ?").bind(groupId).first();
+  if (!group) return json({ error: "קבוצה לא נמצאה" }, 404);
+
+  let query = "SELECT date, time, sender, text FROM messages WHERE group_id = ?";
+  const params = [groupId];
+  if (dateFrom) { query += " AND parsed_date >= ?"; params.push(dateFrom); }
+  if (dateTo) { query += " AND parsed_date <= ?"; params.push(dateTo); }
+  query += " ORDER BY id ASC";
+  const msgs = (await env.DB.prepare(query).bind(...params).all()).results;
+
+  if (!msgs.length) return json({ error: "אין הודעות בטווח שנבחר" }, 400);
+
+  // Sample messages for topic detection — take spread across the range
+  const sampleSize = Math.min(msgs.length, 300);
+  const step = Math.max(1, Math.floor(msgs.length / sampleSize));
+  const sample = [];
+  for (let i = 0; i < msgs.length; i += step) sample.push(msgs[i]);
+  const chatText = sample.map(m => `[${m.date}] ${m.sender}: ${m.text}`).join("\n");
+
+  const sys = `אתה סורק שיחות WhatsApp ומזהה את כל הנושאים שעלו. ענה בעברית בלבד. החזר JSON בלבד ללא backticks.
+זהה כל נושא, גם קטן. לכל נושא תן דירוג חום (hot/warm/cold) לפי כמות הדיון וה"להט".
+כלול: שמות מוצרים, כלים, אנשים, אירועים, בעיות, החלטות — כל דבר שדוברו עליו.
+{"topics":[{"name":"שם הנושא","heat":"hot/warm/cold","messages":"~מספר הודעות משוער","keywords":["מילת מפתח 1","מילת מפתח 2"],"preview":"משפט אחד שמתאר על מה דיברו"}]}`;
+
+  const result = parseGroqResult(await callGroq(sys, `קבוצה: "${group.name}" | ${msgs.length} הודעות\n${chatText}`, keyRow.value));
+
+  return json({ topics: result.topics || [], messageCount: msgs.length });
+}
+
+// ── Search Messages ────────────────────────────────────────────────────────
+
+async function searchMessages(groupId, url, env) {
+  const topic = url.searchParams.get("topic") || "";
+  const dateFrom = url.searchParams.get("from");
+  const dateTo = url.searchParams.get("to");
+  const keywords = topic.split(",").map(k => k.trim()).filter(Boolean);
+
+  if (!keywords.length) return json({ error: "חסרה מילת חיפוש" }, 400);
+
+  let query = "SELECT date, time, sender, text FROM messages WHERE group_id = ?";
+  const params = [groupId];
+  if (dateFrom) { query += " AND parsed_date >= ?"; params.push(dateFrom); }
+  if (dateTo) { query += " AND parsed_date <= ?"; params.push(dateTo); }
+  query += " ORDER BY id ASC";
+  const allMsgs = (await env.DB.prepare(query).bind(...params).all()).results;
+
+  // Filter messages containing any keyword
+  const filtered = allMsgs.filter(m => {
+    const text = m.text.toLowerCase();
+    return keywords.some(k => text.includes(k.toLowerCase()));
+  });
+
+  return json({ messages: filtered, total: allMsgs.length, matched: filtered.length });
 }
 
 // ── Dashboard ──────────────────────────────────────────────────────────────

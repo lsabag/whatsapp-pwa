@@ -1,7 +1,7 @@
 // ── State ────────────────────────────────────────────────────────────────────
-const VERSION = "v2.2.2";
+const VERSION = "v2.3.0";
 const state = {
-  view: "home",       // home | summary | cross | dashboard
+  view: "home",       // home | summary | cross | dashboard | topics | messages
   apiKey: "",
   groups: [],         // local groups (parsed, not yet uploaded)
   dbGroups: [],       // groups from DB
@@ -13,6 +13,10 @@ const state = {
   crossLoading: false,
   progress: {},
   dashboard: null,
+  scannedTopics: null,
+  topicMessages: null,
+  activeTopic: null,
+  scanDates: {},      // groupId -> { from, to }
 };
 
 // ── Toast ────────────────────────────────────────────────────────────────────
@@ -103,6 +107,8 @@ function render() {
   if (state.view === "summary") { renderSummary(app); return; }
   if (state.view === "cross") { renderCross(app); return; }
   if (state.view === "dashboard") { renderDashboard(app); return; }
+  if (state.view === "topics") { renderTopics(app); return; }
+  if (state.view === "messages") { renderMessages(app); return; }
   renderHome(app);
 }
 
@@ -629,7 +635,10 @@ function renderDashboardContent(d) {
         <input type="date" class="input" id="dash-from-${g.id}" value="${g.first_message_date || ""}" min="${g.first_message_date || ""}" max="${g.last_message_date || ""}" />
         <input type="date" class="input" id="dash-to-${g.id}" value="${g.last_message_date || ""}" min="${g.first_message_date || ""}" max="${g.last_message_date || ""}" />
       </div>
-      <button class="btn btn-primary btn-sm" style="margin-top:8px" data-resummarize="${g.id}" data-max-date="${g.last_message_date || ""}">✨ סכם</button>
+      <div style="display:flex;gap:8px;margin-top:8px">
+        <button class="btn btn-primary btn-sm" style="flex:1" data-resummarize="${g.id}" data-max-date="${g.last_message_date || ""}">✨ סכם</button>
+        <button class="btn btn-sm btn-outline" style="flex:1;margin:0" data-scan-topics="${g.id}" data-max-date="${g.last_message_date || ""}">🔍 סרוק נושאים</button>
+      </div>
     </div>`).join("")}
 
     ${d.crossAnalyses?.length ? `
@@ -752,6 +761,30 @@ function bindDashboardEvents(d) {
     });
   });
 
+  // Scan topics
+  document.querySelectorAll("[data-scan-topics]").forEach(el => {
+    el.addEventListener("click", async () => {
+      const groupId = el.dataset.scanTopics;
+      let dateFrom = dashDates[groupId]?.from || null;
+      let dateTo = dashDates[groupId]?.to || null;
+      const customEl = document.getElementById(`custom-dates-${groupId}`);
+      if (customEl && customEl.style.display !== "none") {
+        dateFrom = document.getElementById(`dash-from-${groupId}`)?.value || null;
+        dateTo = document.getElementById(`dash-to-${groupId}`)?.value || null;
+      }
+      el.disabled = true;
+      el.innerHTML = `<span class="spinner"></span> סורק...`;
+      try {
+        const res = await API.scanTopics(groupId, dateFrom, dateTo);
+        state.scannedTopics = res.topics;
+        state.activeGroupId = groupId;
+        state.scanDates = { from: dateFrom, to: dateTo };
+        state.view = "topics";
+      } catch (e) { showToast(`❌ ${e.message}`); }
+      render();
+    });
+  });
+
   // Cross analysis
   document.getElementById("cross-btn")?.addEventListener("click", async () => {
     state.crossLoading = true; render();
@@ -763,6 +796,109 @@ function bindDashboardEvents(d) {
     } catch (e) { showToast(`❌ ${e.message}`); }
     state.crossLoading = false;
     render();
+  });
+}
+
+// ── Topics View ──────────────────────────────────────────────────────────────
+function renderTopics(app) {
+  const topics = state.scannedTopics || [];
+  const group = state.dbGroups.find(g => g.id === state.activeGroupId) || { name: "קבוצה" };
+  const heatOrder = { hot: 0, warm: 1, cold: 2 };
+  const sorted = [...topics].sort((a, b) => (heatOrder[a.heat] || 2) - (heatOrder[b.heat] || 2));
+
+  app.innerHTML = `
+    <div class="header">
+      <div class="header-icon">🔍</div>
+      <div><div class="header-title">נושאים — ${group.name}</div></div>
+    </div>
+    <div class="main">
+      <div class="nav-back">
+        <button class="back-btn" id="back-btn">← חזור לדשבורד</button>
+      </div>
+      ${!sorted.length ? `<div style="text-align:center;padding:32px;color:var(--dim)">לא נמצאו נושאים</div>` : ""}
+      ${sorted.map((t, i) => `<div class="topic-card" data-topic-idx="${i}">
+        <div class="topic-name">${t.name}</div>
+        <div class="topic-preview">${t.preview || ""}</div>
+        <div class="topic-meta">
+          <span class="badge heat-${t.heat || "cold"}">${t.heat === "hot" ? "🔥 לוהט" : t.heat === "warm" ? "🟡 חם" : "🔵 קר"}</span>
+          ${t.messages ? `<span style="font-size:11px;color:var(--dim)">~${t.messages} הודעות</span>` : ""}
+        </div>
+        <div class="topic-actions">
+          <button class="btn btn-sm btn-outline" style="margin:0;flex:1" data-view-topic-msgs="${i}">💬 הצג הודעות</button>
+          <button class="btn btn-sm btn-primary" style="flex:1" data-summarize-topic="${i}">✨ סכם נושא</button>
+        </div>
+      </div>`).join("")}
+    </div>`;
+
+  document.getElementById("back-btn").addEventListener("click", () => {
+    state.view = "dashboard"; render();
+  });
+
+  // View messages for topic
+  document.querySelectorAll("[data-view-topic-msgs]").forEach(el => {
+    el.addEventListener("click", async () => {
+      const t = sorted[+el.dataset.viewTopicMsgs];
+      const keywords = (t.keywords || [t.name]).join(",");
+      el.disabled = true;
+      el.innerHTML = `<span class="spinner"></span>`;
+      try {
+        const res = await API.searchMessages(state.activeGroupId, keywords, state.scanDates.from, state.scanDates.to);
+        state.topicMessages = res.messages;
+        state.activeTopic = t;
+        state.view = "messages";
+      } catch (e) { showToast(`❌ ${e.message}`); }
+      render();
+    });
+  });
+
+  // Summarize specific topic
+  document.querySelectorAll("[data-summarize-topic]").forEach(el => {
+    el.addEventListener("click", async () => {
+      const t = sorted[+el.dataset.summarizeTopic];
+      el.disabled = true;
+      el.innerHTML = `<span class="spinner"></span> מסכם...`;
+      try {
+        const res = await API.summarize(state.activeGroupId, state.scanDates.from, state.scanDates.to, t.name);
+        state.activeSummary = res.result;
+        state.view = "summary";
+      } catch (e) { showToast(`❌ ${e.message}`); }
+      render();
+    });
+  });
+}
+
+// ── Messages View ────────────────────────────────────────────────────────────
+function renderMessages(app) {
+  const msgs = state.topicMessages || [];
+  const topic = state.activeTopic || { name: "נושא" };
+
+  app.innerHTML = `
+    <div class="header">
+      <div class="header-icon">💬</div>
+      <div><div class="header-title">${topic.name}</div><div class="header-sub">${msgs.length} הודעות</div></div>
+    </div>
+    <div class="main">
+      <div class="nav-back">
+        <button class="back-btn" id="back-btn">← חזור לנושאים</button>
+        <button class="export-btn" id="copy-msgs">📋 העתק הכל</button>
+      </div>
+      ${!msgs.length ? `<div style="text-align:center;padding:32px;color:var(--dim)">לא נמצאו הודעות</div>` :
+      `<div class="msg-viewer">
+        ${msgs.map(m => `<div class="msg-bubble">
+          <div class="msg-sender">${m.sender}</div>
+          <div class="msg-text">${m.text}</div>
+          <div class="msg-time">${m.date} ${m.time}</div>
+        </div>`).join("")}
+      </div>`}
+    </div>`;
+
+  document.getElementById("back-btn").addEventListener("click", () => {
+    state.view = "topics"; render();
+  });
+
+  document.getElementById("copy-msgs").addEventListener("click", () => {
+    const text = msgs.map(m => `[${m.date} ${m.time}] ${m.sender}: ${m.text}`).join("\n");
+    navigator.clipboard.writeText(text).then(() => showToast("✓ הועתק ללוח"));
   });
 }
 

@@ -280,6 +280,29 @@ html, body {
 }
 .toast.show { opacity: 1; }
 
+/* Topic cards */
+.topic-card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 12px; padding: 12px 14px; margin-bottom: 8px;
+  cursor: pointer; transition: background 0.15s;
+  -webkit-tap-highlight-color: transparent;
+}
+.topic-card:active { background: rgba(255,255,255,0.05); }
+.topic-name { font-size: 14px; font-weight: 600; margin-bottom: 2px; }
+.topic-preview { font-size: 12px; color: var(--muted); line-height: 1.4; }
+.topic-meta { display: flex; gap: 6px; align-items: center; margin-top: 6px; }
+.heat-hot { background: rgba(239,68,68,0.15); color: #f87171; border-color: rgba(239,68,68,0.3); }
+.heat-warm { background: rgba(245,158,11,0.15); color: #fbbf24; border-color: rgba(245,158,11,0.3); }
+.heat-cold { background: rgba(59,130,246,0.15); color: #93c5fd; border-color: rgba(59,130,246,0.3); }
+.topic-actions { display: flex; gap: 6px; margin-top: 8px; }
+
+/* Message viewer */
+.msg-viewer { max-height: 60vh; overflow-y: auto; border-radius: 14px; background: var(--surface); border: 1px solid var(--border); padding: 12px; }
+.msg-bubble { margin-bottom: 10px; padding: 8px 12px; border-radius: 12px; background: rgba(255,255,255,0.04); }
+.msg-sender { font-size: 11px; font-weight: 700; color: var(--green); margin-bottom: 2px; }
+.msg-text { font-size: 13px; color: var(--text); line-height: 1.5; }
+.msg-time { font-size: 10px; color: var(--dim); margin-top: 2px; }
+
 /* Loading skeleton */
 .skeleton {
   background: linear-gradient(90deg, var(--surface) 25%, rgba(255,255,255,0.05) 50%, var(--surface) 75%);

@@ -37,6 +37,17 @@ const API = {
   getSummaries(groupId) { return this.fetch(`/summaries/${groupId}`); },
   deleteSummary(id) { return this.fetch(`/summaries/${encodeURIComponent(id)}`, { method: "DELETE" }); },
 
+  // Topic scan
+  scanTopics(groupId, dateFrom, dateTo) {
+    return this.fetch("/scan-topics", { method: "POST", body: { groupId, dateFrom, dateTo } });
+  },
+  searchMessages(groupId, topic, dateFrom, dateTo) {
+    const params = new URLSearchParams({ topic });
+    if (dateFrom) params.set("from", dateFrom);
+    if (dateTo) params.set("to", dateTo);
+    return this.fetch(`/groups/${groupId}/search?${params}`);
+  },
+
   // Cross analysis
   crossAnalyze(groupIds) { return this.fetch("/cross-analyze", { method: "POST", body: { groupIds } }); },
   getCrossAnalyses() { return this.fetch("/cross-analyses"); },
