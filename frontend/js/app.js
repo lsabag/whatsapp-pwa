@@ -1,5 +1,5 @@
 // ── State ────────────────────────────────────────────────────────────────────
-const VERSION = "v2.3.1";
+const VERSION = "v2.3.2";
 const state = {
   view: "home",       // home | summary | cross | dashboard | topics | messages
   apiKey: "",
@@ -229,8 +229,14 @@ function renderGroups() {
       <input class="input" data-field="focus" data-id="${g.id}" placeholder="מה לשים דגש? (הזדמנויות, בעיות...)" value="${g.focus || ""}" />
       ${dateRangeSelect(g.id, g.datePreset || "all")}
       ${showCustom ? `<div class="date-range">
-        <input type="date" class="input" data-field="dateFrom" data-id="${g.id}" value="${g.dateFrom || ""}" min="${g.dateMin || ""}" max="${g.dateMax || ""}" />
-        <input type="date" class="input" data-field="dateTo" data-id="${g.id}" value="${g.dateTo || ""}" min="${g.dateMin || ""}" max="${g.dateMax || ""}" />
+        <div style="flex:1;display:flex;gap:4px;align-items:center">
+          <input type="date" class="input" data-field="dateFrom" data-id="${g.id}" value="${g.dateFrom || ""}" min="${g.dateMin || ""}" max="${g.dateMax || ""}" style="flex:1" />
+          <button class="today-btn" data-today-target="dateFrom" data-today-id="${g.id}">היום</button>
+        </div>
+        <div style="flex:1;display:flex;gap:4px;align-items:center">
+          <input type="date" class="input" data-field="dateTo" data-id="${g.id}" value="${g.dateTo || ""}" min="${g.dateMin || ""}" max="${g.dateMax || ""}" style="flex:1" />
+          <button class="today-btn" data-today-target="dateTo" data-today-id="${g.id}">היום</button>
+        </div>
       </div>` : ""}
       ${isFiltered ? `<div class="date-range-info">${filteredCount} מתוך ${g.messageCount} הודעות בטווח שנבחר</div>` : ""}
     </div>`;
@@ -342,6 +348,14 @@ function bindHomeEvents() {
         g.dateTo = to;
       }
       render();
+    });
+  });
+
+  // Today buttons (new groups)
+  document.querySelectorAll("[data-today-target]").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const g = state.groups.find(g => g.id === btn.dataset.todayId);
+      if (g) { g[btn.dataset.todayTarget] = new Date().toISOString().slice(0, 10); render(); }
     });
   });
 
@@ -639,8 +653,14 @@ function renderDashboardContent(d) {
         <option value="custom">בחירת תאריכים...</option>
       </select>
       <div class="date-range" id="custom-dates-${g.id}" style="display:none">
-        <input type="date" class="input" id="dash-from-${g.id}" value="${g.first_message_date || ""}" min="${g.first_message_date || ""}" max="${g.last_message_date || ""}" />
-        <input type="date" class="input" id="dash-to-${g.id}" value="${g.last_message_date || ""}" min="${g.first_message_date || ""}" max="${g.last_message_date || ""}" />
+        <div style="flex:1;display:flex;gap:4px;align-items:center">
+          <input type="date" class="input" id="dash-from-${g.id}" value="${g.first_message_date || ""}" min="${g.first_message_date || ""}" max="${g.last_message_date || ""}" style="flex:1" />
+          <button class="today-btn" data-today-dash="dash-from-${g.id}">היום</button>
+        </div>
+        <div style="flex:1;display:flex;gap:4px;align-items:center">
+          <input type="date" class="input" id="dash-to-${g.id}" value="${g.last_message_date || ""}" min="${g.first_message_date || ""}" max="${g.last_message_date || ""}" style="flex:1" />
+          <button class="today-btn" data-today-dash="dash-to-${g.id}">היום</button>
+        </div>
       </div>
       <div style="display:flex;gap:8px;margin-top:8px">
         <button class="btn btn-primary btn-sm" style="flex:1" data-resummarize="${g.id}" data-max-date="${g.last_message_date || ""}">✨ סכם</button>
@@ -713,6 +733,14 @@ function bindDashboardEvents(d) {
       state.dashboard = await API.getDashboard();
       await loadDbGroups();
       render();
+    });
+  });
+
+  // Today buttons (dashboard)
+  document.querySelectorAll("[data-today-dash]").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const input = document.getElementById(btn.dataset.todayDash);
+      if (input) input.value = new Date().toISOString().slice(0, 10);
     });
   });
 
