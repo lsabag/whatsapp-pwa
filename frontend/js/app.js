@@ -1,5 +1,5 @@
 // ── State ────────────────────────────────────────────────────────────────────
-const VERSION = "v2.4.0";
+const VERSION = "v2.4.1";
 const state = {
   view: "home",       // home | summary | cross | dashboard | topics | messages
   apiKey: "",
@@ -17,6 +17,7 @@ const state = {
   topicMessages: null,
   activeTopic: null,
   scanDates: {},      // groupId -> { from, to }
+  dashPresets: {},    // groupId -> { preset, from, to }
 };
 
 // ── Toast ────────────────────────────────────────────────────────────────────
@@ -686,20 +687,18 @@ function renderDashboardContent(d) {
       }).join("") : `<div style="font-size:12px;color:var(--dim);padding:8px">לא סוכם עדיין</div>`}
       <input class="input input-sm" id="dash-focus-${g.id}" style="margin-top:8px" placeholder="מה לשים דגש? (וואצאפ, קלוד קוד, לקוחות...)" value="" />
       <select class="input input-sm" data-dash-dateselect="${g.id}" style="margin-top:8px">
-        <option value="all" selected>כל ההודעות</option>
-        <option value="week">השבוע האחרון</option>
-        <option value="month">החודש האחרון</option>
-        <option value="3months">3 חודשים אחרונים</option>
-        <option value="6months">חצי שנה אחרונה</option>
-        <option value="custom">בחירת תאריכים...</option>
+        ${["all","week","month","3months","6months","custom"].map(v => {
+          const labels = {all:"כל ההודעות",week:"השבוע האחרון",month:"החודש האחרון","3months":"3 חודשים אחרונים","6months":"חצי שנה אחרונה",custom:"בחירת תאריכים..."};
+          return `<option value="${v}" ${(state.dashPresets[g.id]?.preset||"all")===v?"selected":""}>${labels[v]}</option>`;
+        }).join("")}
       </select>
-      <div class="date-range" id="custom-dates-${g.id}" style="display:none">
+      <div class="date-range" id="custom-dates-${g.id}" style="${(state.dashPresets[g.id]?.preset)==="custom"?"":"display:none"}">
         <div style="flex:1;display:flex;gap:4px;align-items:center">
-          <input type="date" class="input" id="dash-from-${g.id}" value="${g.first_message_date || ""}" min="${g.first_message_date || ""}" max="${g.last_message_date || ""}" style="flex:1" />
+          <input type="date" class="input" id="dash-from-${g.id}" value="${state.dashPresets[g.id]?.from||g.first_message_date||""}" min="${g.first_message_date || ""}" max="${g.last_message_date || ""}" style="flex:1" />
           <button class="today-btn" data-today-dash="dash-from-${g.id}">היום</button>
         </div>
         <div style="flex:1;display:flex;gap:4px;align-items:center">
-          <input type="date" class="input" id="dash-to-${g.id}" value="${g.last_message_date || ""}" min="${g.first_message_date || ""}" max="${g.last_message_date || ""}" style="flex:1" />
+          <input type="date" class="input" id="dash-to-${g.id}" value="${state.dashPresets[g.id]?.to||g.last_message_date||""}" min="${g.first_message_date || ""}" max="${g.last_message_date || ""}" style="flex:1" />
           <button class="today-btn" data-today-dash="dash-to-${g.id}">היום</button>
         </div>
       </div>
@@ -785,23 +784,25 @@ function bindDashboardEvents(d) {
     });
   });
 
-  // Dashboard date selects
-  const dashDates = {};
+  // Dashboard date selects — persist in state
   document.querySelectorAll("[data-dash-dateselect]").forEach(sel => {
     const gId = sel.dataset.dashDateselect;
-    dashDates[gId] = { from: null, to: null };
+    if (!state.dashPresets[gId]) state.dashPresets[gId] = { preset: "all", from: null, to: null };
     sel.addEventListener("change", () => {
       const g = d.groups.find(g => g.id === gId);
       const customEl = document.getElementById(`custom-dates-${gId}`);
+      state.dashPresets[gId].preset = sel.value;
       if (sel.value === "custom") {
         if (customEl) customEl.style.display = "flex";
       } else {
         if (customEl) customEl.style.display = "none";
         if (sel.value === "all") {
-          dashDates[gId] = { from: null, to: null };
+          state.dashPresets[gId].from = null;
+          state.dashPresets[gId].to = null;
         } else {
           const { from, to } = getPresetDates(sel.value, g?.last_message_date);
-          dashDates[gId] = { from, to };
+          state.dashPresets[gId].from = from;
+          state.dashPresets[gId].to = to;
         }
       }
     });
@@ -811,15 +812,14 @@ function bindDashboardEvents(d) {
   document.querySelectorAll("[data-resummarize]").forEach(el => {
     el.addEventListener("click", async () => {
       const groupId = el.dataset.resummarize;
-      let dateFrom = dashDates[groupId]?.from || null;
-      let dateTo = dashDates[groupId]?.to || null;
-      // Check custom date inputs
-      const fromInput = document.getElementById(`dash-from-${groupId}`);
-      const toInput = document.getElementById(`dash-to-${groupId}`);
-      const customEl = document.getElementById(`custom-dates-${groupId}`);
-      if (customEl && customEl.style.display !== "none") {
-        dateFrom = fromInput?.value || null;
-        dateTo = toInput?.value || null;
+      const preset = state.dashPresets[groupId] || { from: null, to: null };
+      let dateFrom = preset.from;
+      let dateTo = preset.to;
+      if (preset.preset === "custom") {
+        dateFrom = document.getElementById(`dash-from-${groupId}`)?.value || null;
+        dateTo = document.getElementById(`dash-to-${groupId}`)?.value || null;
+        state.dashPresets[groupId].from = dateFrom;
+        state.dashPresets[groupId].to = dateTo;
       }
       // Get focus
       const focusInput = document.getElementById(`dash-focus-${groupId}`);
@@ -856,10 +856,10 @@ function bindDashboardEvents(d) {
   document.querySelectorAll("[data-scan-topics]").forEach(el => {
     el.addEventListener("click", async () => {
       const groupId = el.dataset.scanTopics;
-      let dateFrom = dashDates[groupId]?.from || null;
-      let dateTo = dashDates[groupId]?.to || null;
-      const customEl = document.getElementById(`custom-dates-${groupId}`);
-      if (customEl && customEl.style.display !== "none") {
+      const preset = state.dashPresets[groupId] || { from: null, to: null };
+      let dateFrom = preset.from;
+      let dateTo = preset.to;
+      if (preset.preset === "custom") {
         dateFrom = document.getElementById(`dash-from-${groupId}`)?.value || null;
         dateTo = document.getElementById(`dash-to-${groupId}`)?.value || null;
       }
