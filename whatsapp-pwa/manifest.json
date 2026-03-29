@@ -17,10 +17,13 @@
     "method": "POST",
     "enctype": "multipart/form-data",
     "params": {
+      "title": "title",
+      "text": "text",
+      "url": "url",
       "files": [
         {
           "name": "file",
-          "accept": ["application/zip", ".zip", "text/plain", ".txt"]
+          "accept": ["application/zip", "application/x-zip-compressed", "application/octet-stream", ".zip", "text/plain", ".txt", "*/*"]
         }
       ]
     }
