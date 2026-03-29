@@ -222,7 +222,7 @@
       background: #1a2e24; border: 1px solid var(--green-border); color: var(--green);
       padding: 10px 20px; border-radius: 999px; font-size: 13px; font-weight: 600;
       z-index: 999; white-space: nowrap; opacity: 0; transition: opacity 0.3s;
-      pointer-events: none;
+      pointer-events: none; direction: ltr; unicode-bidi: plaintext;
     }
     .toast.show { opacity: 1; }
 
@@ -450,9 +450,11 @@ async function processBase64(base64, fileName) {
   const buf = base64ToArrayBuffer(base64);
   const isZip = fileName.toLowerCase().endsWith(".zip");
   if (isZip) {
-    (await extractTxtFromZip(buf)).forEach(t => {
+    const txtFiles = await extractTxtFromZip(buf);
+    showToast(`ZIP: ${txtFiles.length} קבצי טקסט, ${buf.byteLength} bytes`);
+    txtFiles.forEach(t => {
       const messages = parseWhatsApp(t.content);
-      if (!messages.length) return;
+      if (!messages.length) { showToast(`0 הודעות ב-${t.filename} (${t.content.length} תווים)`); return; }
       state.groups.push({
         id: `${fileName}-${Date.now()}-${Math.random()}`,
         filename: fileName, messages, messageCount: messages.length,
@@ -518,7 +520,7 @@ function renderHome(app) {
         <div style="margin-bottom:8px;">ייצא קבוצה מוואצאפ ושתף לאפליקציה</div>
         <div style="font-size:11px;">פתח קבוצה → ⋮ → ייצוא צ׳אט → ללא מדיה</div>
       </div>` : ""}
-      <div style="text-align:center;padding:24px 0 8px;font-size:10px;color:var(--dim)">v1.0.6</div>
+      <div style="text-align:center;padding:24px 0 8px;font-size:10px;color:var(--dim)">v1.0.7</div>
     </div>`;
 
   bindHomeEvents();
