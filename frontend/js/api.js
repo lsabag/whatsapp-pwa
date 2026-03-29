@@ -28,9 +28,15 @@ const API = {
     return this.fetch(`/groups/${groupId}/messages?${params}`);
   },
 
-  // Summarize
-  summarize(groupId, dateFrom, dateTo, focus) {
-    return this.fetch("/summarize", { method: "POST", body: { groupId, dateFrom, dateTo, focus } });
+  // Summarize (step-by-step)
+  summarizePrepare(groupId, dateFrom, dateTo, focus) {
+    return this.fetch("/summarize/prepare", { method: "POST", body: { groupId, dateFrom, dateTo, focus } });
+  },
+  summarizeChunk(params) {
+    return this.fetch("/summarize/chunk", { method: "POST", body: params });
+  },
+  summarizeMerge(params) {
+    return this.fetch("/summarize/merge", { method: "POST", body: params });
   },
 
   // Summaries

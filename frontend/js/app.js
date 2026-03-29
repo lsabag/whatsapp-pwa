@@ -1,5 +1,5 @@
 // ── State ────────────────────────────────────────────────────────────────────
-const VERSION = "v2.3.3";
+const VERSION = "v2.4.0";
 const state = {
   view: "home",       // home | summary | cross | dashboard | topics | messages
   apiKey: "",
@@ -99,6 +99,56 @@ async function uploadGroup(group) {
     messages: group.messages,
   });
   return result;
+}
+
+// ── Summarize Orchestrator (chunk by chunk with progress) ────────────────────
+async function runSummarize(groupId, dateFrom, dateTo, focus, onProgress) {
+  // Step 1: Prepare
+  onProgress("מכין...", 0);
+  const prep = await API.summarizePrepare(groupId, dateFrom, dateTo, focus);
+  const { totalChunks, totalMessages, topSenders, groupName, context } = prep;
+  onProgress(`${totalMessages} הודעות, ${totalChunks} חלקים`, 0);
+
+  // Step 2: Chunk by chunk
+  const partials = [];
+  for (let i = 0; i < totalChunks; i++) {
+    onProgress(`מנתח חלק ${i + 1} מתוך ${totalChunks}...`, (i / totalChunks) * 80);
+    let retries = 3;
+    while (retries > 0) {
+      try {
+        const res = await API.summarizeChunk({
+          groupId, dateFrom, dateTo, chunkIndex: i, totalChunks,
+          focus: focus || prep.focus, groupName, context,
+        });
+        partials.push(res.result);
+        break;
+      } catch (e) {
+        if (e.message.includes("חריגה") && retries > 1) {
+          onProgress(`ממתין (rate limit)... ניסיון ${4 - retries}/3`, (i / totalChunks) * 80);
+          await new Promise(r => setTimeout(r, 20000));
+          retries--;
+        } else throw e;
+      }
+    }
+    // Wait between chunks to avoid rate limit
+    if (i < totalChunks - 1) {
+      onProgress(`מנתח חלק ${i + 1} מתוך ${totalChunks}... ⏳`, ((i + 1) / totalChunks) * 80);
+      await new Promise(r => setTimeout(r, 4000));
+    }
+  }
+
+  // Step 3: Merge
+  onProgress(totalChunks > 1 ? "ממזג סיכומים..." : "שומר...", 85);
+  if (totalChunks > 1) {
+    await new Promise(r => setTimeout(r, 3000)); // delay before merge
+  }
+  const final = await API.summarizeMerge({
+    groupId, dateFrom, dateTo, partials, totalMessages, topSenders,
+    focus: focus || prep.focus, groupName, context,
+  });
+
+  onProgress("✓ סיכום מוכן!", 100);
+  return final;
 }
 
 // ── Render Router ────────────────────────────────────────────────────────────
@@ -767,10 +817,24 @@ function bindDashboardEvents(d) {
       const focus = focusInput?.value?.trim() || null;
       // Save focus to group if provided
       if (focus) API.updateGroup(groupId, { name: d.groups.find(g=>g.id===groupId)?.name || "", context: "", focus });
+      // Show progress area
+      const card = el.closest(".dash-card");
+      let progressEl = card.querySelector(".summary-progress");
+      if (!progressEl) {
+        progressEl = document.createElement("div");
+        progressEl.className = "summary-progress";
+        progressEl.style.marginTop = "8px";
+        card.appendChild(progressEl);
+      }
       el.disabled = true;
       el.innerHTML = `<span class="spinner"></span> מסכם...`;
+
       try {
-        await API.summarize(groupId, dateFrom, dateTo, focus);
+        await runSummarize(groupId, dateFrom, dateTo, focus, (text, pct) => {
+          progressEl.innerHTML = `
+            <div class="progress-text">${text}</div>
+            <div class="progress-bar"><div class="progress-fill" style="width:${pct}%"></div></div>`;
+        });
         state.dashboard = await API.getDashboard();
         notifyOtherTabs();
         showToast("✓ סיכום חדש נוצר");
@@ -874,9 +938,18 @@ function renderTopics(app) {
     el.addEventListener("click", async () => {
       const t = sorted[+el.dataset.summarizeTopic];
       el.disabled = true;
-      el.innerHTML = `<span class="spinner"></span> מסכם...`;
+      const card = el.closest(".topic-card");
+      let progressEl = card.querySelector(".summary-progress");
+      if (!progressEl) {
+        progressEl = document.createElement("div");
+        progressEl.className = "summary-progress";
+        progressEl.style.marginTop = "6px";
+        card.appendChild(progressEl);
+      }
       try {
-        const res = await API.summarize(state.activeGroupId, state.scanDates.from, state.scanDates.to, t.name);
+        const res = await runSummarize(state.activeGroupId, state.scanDates.from, state.scanDates.to, t.name, (text, pct) => {
+          progressEl.innerHTML = `<div class="progress-text">${text}</div><div class="progress-bar"><div class="progress-fill" style="width:${pct}%"></div></div>`;
+        });
         state.activeSummary = res.result;
         state.view = "summary";
       } catch (e) { showToast(`❌ ${e.message}`); }

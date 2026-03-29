@@ -39,8 +39,10 @@ async function handleAPI(url, request, env) {
   if (path.match(/^\/api\/groups\/[^/]+$/) && method === "DELETE") return deleteGroup(path.split("/")[3], env);
   if (path.match(/^\/api\/groups\/[^/]+\/messages$/) && method === "GET") return getMessages(path.split("/")[3], url, env);
 
-  // Summaries
-  if (path === "/api/summarize" && method === "POST") return summarize(request, env);
+  // Summaries — step-by-step
+  if (path === "/api/summarize/prepare" && method === "POST") return summarizePrepare(request, env);
+  if (path === "/api/summarize/chunk" && method === "POST") return summarizeChunk(request, env);
+  if (path === "/api/summarize/merge" && method === "POST") return summarizeMerge(request, env);
   if (path.match(/^\/api\/summaries\/[^/]+$/) && method === "GET") return getSummaries(path.split("/")[3], env);
   if (path.match(/^\/api\/summaries\/[^/]+$/) && method === "DELETE") return deleteSummary(path.split("/")[3], env);
 
@@ -190,22 +192,28 @@ async function deleteSummary(id, env) {
   return json({ ok: true });
 }
 
-// ── Summarize ──────────────────────────────────────────────────────────────
+// ── Summarize (step-by-step) ───────────────────────────────────────────────
 
-async function summarize(request, env) {
-  const body = await request.json();
-  const { groupId, dateFrom, dateTo, focus: requestFocus } = body;
+const SYS_CHUNK = `אתה מנתח שיחות WhatsApp לאנשי עסקים. ענה בעברית בלבד. החזר JSON בלבד ללא backticks ולא כלום אחר.
+חשוב מאוד: ציין כל נושא שעלה בשיחה, גם אם הוא קטן או שדיברו עליו רק כמה הודעות. אל תדלג על שום נושא.
+כל שם מוצר, כלי, טכנולוגיה, אפליקציה, או שירות שהוזכר — חייב להופיע ברשימת הנושאים.
+רשום כמה שיותר פריטים בכל שדה — עדיף יותר מדי מאשר פחות מדי.`;
 
-  // Get API key
-  const keyRow = await env.DB.prepare("SELECT value FROM settings WHERE key = 'groq_key'").first();
-  if (!keyRow) return json({ error: "API Key לא מוגדר" }, 400);
-  const apiKey = keyRow.value;
+const SYS_MERGE = `אתה ממזג סיכומי חלקים של שיחת WhatsApp לסיכום אחד מקיף. ענה בעברית בלבד. החזר JSON בלבד ללא backticks ולא כלום אחר.
+חשוב מאוד: שמור על כל הנושאים מכל החלקים. אל תשמיט שום נושא, גם אם הוא מוזכר רק בחלק אחד.
+מזג את כל הפריטים מכל החלקים — עדיף רשימה ארוכה ומלאה מאשר קצרה וחסרה.`;
 
-  // Get group info
+const JSON_CHUNK = `{"topics":["נושא 1","נושא 2","...כל הנושאים"],"summary":"תקציר 3-5 משפטים","actionItems":["..."],"openQuestions":["..."],"businessInsights":["..."],"keyDecisions":["..."],"mood":"חיובי/ניטרלי/מתוח","urgentItems":["..."],"trends":["..."],"brokenPromises":["..."],"recurringProblems":["..."]}`;
+
+const JSON_MERGE = `{"topics":["כל הנושאים מכל החלקים"],"summary":"תקציר מקיף 5-8 משפטים","actionItems":["כל המשימות"],"openQuestions":["כל השאלות"],"businessInsights":["כל התובנות"],"keyDecisions":["כל ההחלטות"],"mood":"חיובי/ניטרלי/מתוח","urgentItems":["כל הדחופים"],"trends":["כל המגמות"],"brokenPromises":["כל ההבטחות"],"recurringProblems":["כל הבעיות"]}`;
+
+// Step 1: Prepare — returns chunk count and metadata
+async function summarizePrepare(request, env) {
+  const { groupId, dateFrom, dateTo, focus } = await request.json();
+
   const group = await env.DB.prepare("SELECT * FROM groups WHERE id = ?").bind(groupId).first();
   if (!group) return json({ error: "קבוצה לא נמצאה" }, 404);
 
-  // Get filtered messages
   let query = "SELECT date, time, sender, text FROM messages WHERE group_id = ?";
   const params = [groupId];
   if (dateFrom) { query += " AND parsed_date >= ?"; params.push(dateFrom); }
@@ -215,57 +223,75 @@ async function summarize(request, env) {
 
   if (!msgs.length) return json({ error: "אין הודעות בטווח שנבחר" }, 400);
 
-  // Get top senders
+  const chunks = chunkMessages(msgs, 5500);
   const senderCount = {};
   for (const m of msgs) senderCount[m.sender] = (senderCount[m.sender] || 0) + 1;
   const topSenders = Object.entries(senderCount).sort((a, b) => b[1] - a[1]).slice(0, 5);
 
-  // Chunk and summarize
+  return json({
+    totalMessages: msgs.length,
+    totalChunks: chunks.length,
+    topSenders,
+    groupName: group.name,
+    context: group.context,
+    focus: focus || group.focus || "",
+  });
+}
+
+// Step 2: Summarize one chunk
+async function summarizeChunk(request, env) {
+  const { groupId, dateFrom, dateTo, chunkIndex, totalChunks, focus, groupName, context } = await request.json();
+
+  const keyRow = await env.DB.prepare("SELECT value FROM settings WHERE key = 'groq_key'").first();
+  if (!keyRow) return json({ error: "API Key לא מוגדר" }, 400);
+
+  let query = "SELECT date, time, sender, text FROM messages WHERE group_id = ?";
+  const params = [groupId];
+  if (dateFrom) { query += " AND parsed_date >= ?"; params.push(dateFrom); }
+  if (dateTo) { query += " AND parsed_date <= ?"; params.push(dateTo); }
+  query += " ORDER BY id ASC";
+  const msgs = (await env.DB.prepare(query).bind(...params).all()).results;
   const chunks = chunkMessages(msgs, 5500);
-  const partials = [];
 
-  const effectiveFocus = requestFocus || group.focus;
-  const focusLine = effectiveFocus ? `\nשים דגש מיוחד על: ${effectiveFocus}` : "";
-  const contextLine = group.context ? ` | נושא: ${group.context}` : "";
+  if (chunkIndex >= chunks.length) return json({ error: "Invalid chunk index" }, 400);
 
-  const sysChunk = `אתה מנתח שיחות WhatsApp לאנשי עסקים. ענה בעברית בלבד. החזר JSON בלבד ללא backticks ולא כלום אחר.
-חשוב מאוד: ציין כל נושא שעלה בשיחה, גם אם הוא קטן או שדיברו עליו רק כמה הודעות. אל תדלג על שום נושא.
-כל שם מוצר, כלי, טכנולוגיה, אפליקציה, או שירות שהוזכר — חייב להופיע ברשימת הנושאים.
-רשום כמה שיותר פריטים בכל שדה — עדיף יותר מדי מאשר פחות מדי.${effectiveFocus ? `\nהמשתמש ביקש דגש מיוחד על: "${effectiveFocus}" — וודא שכל אזכור של נושא זה מופיע בסיכום.` : ""}
-{"topics":["נושא 1","נושא 2","נושא 3","...כל הנושאים שעלו כולל כלים/מוצרים/שירותים"],"summary":"תקציר 3-5 משפטים מפורט","actionItems":["..."],"openQuestions":["..."],"businessInsights":["..."],"keyDecisions":["..."],"mood":"חיובי/ניטרלי/מתוח","urgentItems":["..."],"trends":["..."],"brokenPromises":["..."],"recurringProblems":["..."]}`;
+  const focusLine = focus ? `\nשים דגש מיוחד על: ${focus}` : "";
+  const contextLine = context ? ` | נושא: ${context}` : "";
+  const focusPrompt = focus ? `\nהמשתמש ביקש דגש מיוחד על: "${focus}" — וודא שכל אזכור של נושא זה מופיע בסיכום.` : "";
 
-  for (let i = 0; i < chunks.length; i++) {
-    if (i > 0) await sleep(3000);
-    const chatText = chunks[i].map(m => `[${m.date} ${m.time}] ${m.sender}: ${m.text}`).join("\n");
-    const userMsg = `קבוצה: "${group.name}"${contextLine} | חלק ${i + 1}/${chunks.length}${focusLine}\n${chatText}`;
-    partials.push(parseGroqResult(await callGroq(sysChunk, userMsg, apiKey)));
-  }
+  const chatText = chunks[chunkIndex].map(m => `[${m.date} ${m.time}] ${m.sender}: ${m.text}`).join("\n");
+  const userMsg = `קבוצה: "${groupName}"${contextLine} | חלק ${chunkIndex + 1}/${totalChunks}${focusLine}\n${chatText}`;
+
+  const result = parseGroqResult(await callGroq(SYS_CHUNK + focusPrompt + "\n" + JSON_CHUNK, userMsg, keyRow.value));
+  return json({ chunkIndex, result });
+}
+
+// Step 3: Merge all chunks and save
+async function summarizeMerge(request, env) {
+  const { groupId, dateFrom, dateTo, partials, totalMessages, topSenders, focus, groupName, context } = await request.json();
+
+  const keyRow = await env.DB.prepare("SELECT value FROM settings WHERE key = 'groq_key'").first();
+  if (!keyRow) return json({ error: "API Key לא מוגדר" }, 400);
 
   let result;
-  if (chunks.length === 1) {
+  if (partials.length === 1) {
     result = partials[0];
   } else {
-    const sysMerge = `אתה ממזג סיכומי חלקים של שיחת WhatsApp לסיכום אחד מקיף. ענה בעברית בלבד. החזר JSON בלבד ללא backticks ולא כלום אחר.
-חשוב מאוד: שמור על כל הנושאים מכל החלקים. אל תשמיט שום נושא, גם אם הוא מוזכר רק בחלק אחד.
-מזג את כל הפריטים מכל החלקים — עדיף רשימה ארוכה ומלאה מאשר קצרה וחסרה.
-{"topics":["כל הנושאים שעלו בכל החלקים"],"summary":"תקציר מקיף 5-8 משפטים שמכסה את כל הנושאים","actionItems":["כל המשימות"],"openQuestions":["כל השאלות"],"businessInsights":["כל התובנות"],"keyDecisions":["כל ההחלטות"],"mood":"חיובי/ניטרלי/מתוח","urgentItems":["כל הדחופים"],"trends":["כל המגמות"],"brokenPromises":["כל ההבטחות"],"recurringProblems":["כל הבעיות"]}`;
-    const mergeInput = `קבוצה: "${group.name}" | נושא: ${group.context || "כללי"} | דגש: ${group.focus || "הכל"}
-סה"כ: ${msgs.length} הודעות | טופ: ${topSenders.map(([n, c]) => `${n}(${c})`).join(", ")}
+    const focusPrompt = focus ? `\nהמשתמש ביקש דגש מיוחד על: "${focus}".` : "";
+    const mergeInput = `קבוצה: "${groupName}" | נושא: ${context || "כללי"} | דגש: ${focus || "הכל"}
+סה"כ: ${totalMessages} הודעות | טופ: ${topSenders.map(([n, c]) => `${n}(${c})`).join(", ")}
 סיכומי חלקים:\n${partials.map((p, i) => `חלק ${i + 1}: ${JSON.stringify(p)}`).join("\n")}`;
-    await sleep(3000);
-    result = parseGroqResult(await callGroq(sysMerge, mergeInput, apiKey));
+    result = parseGroqResult(await callGroq(SYS_MERGE + focusPrompt + "\n" + JSON_MERGE, mergeInput, keyRow.value));
   }
 
-  // Save summary to DB
+  // Save
   const summaryId = `${groupId}-${Date.now()}`;
   await env.DB.prepare(
     "INSERT INTO summaries (id, group_id, date_from, date_to, message_count, result, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)"
-  ).bind(summaryId, groupId, dateFrom || null, dateTo || null, msgs.length, JSON.stringify(result), Date.now()).run();
-
-  // Update group timestamp
+  ).bind(summaryId, groupId, dateFrom || null, dateTo || null, totalMessages, JSON.stringify(result), Date.now()).run();
   await env.DB.prepare("UPDATE groups SET updated_at = ? WHERE id = ?").bind(Date.now(), groupId).run();
 
-  return json({ id: summaryId, result, messageCount: msgs.length, topSenders });
+  return json({ id: summaryId, result, messageCount: totalMessages });
 }
 
 // ── Cross Analysis ─────────────────────────────────────────────────────────
