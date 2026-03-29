@@ -1,5 +1,5 @@
 // ── State ────────────────────────────────────────────────────────────────────
-const VERSION = "v2.5.1";
+const VERSION = "v2.5.2";
 const state = {
   view: "home",       // home | summary | cross | dashboard | topics | messages
   apiKey: "",
@@ -895,20 +895,23 @@ function bindDashboardEvents(d) {
       el.disabled = true;
       el.innerHTML = `<span class="spinner"></span>`;
       try {
-        const msgs = await API.fetch(`/groups/${encodeURIComponent(groupId)}/messages`);
+        const preset = state.dashPresets[groupId] || {};
+        const dateFrom = preset.from || null;
+        const dateTo = preset.to || null;
+        const params = new URLSearchParams();
+        if (dateFrom) params.set("from", dateFrom);
+        if (dateTo) params.set("to", dateTo);
+        const msgs = await API.fetch(`/groups/${encodeURIComponent(groupId)}/messages?${params}`);
         const text = msgs.map(m => `[${m.date} ${m.time}] ${m.sender}: ${m.text}`).join("\n");
-        // Try clipboard, fallback to download
-        try {
-          await navigator.clipboard.writeText(text);
-          showToast(`✓ ${msgs.length} הודעות הועתקו ללוח`);
-        } catch {
-          const blob = new Blob([text], { type: "text/plain" });
-          const a = document.createElement("a");
-          a.href = URL.createObjectURL(blob);
-          a.download = `${d.groups.find(g=>g.id===groupId)?.name||"chat"}.txt`;
-          a.click();
-          showToast(`✓ ${msgs.length} הודעות — קובץ הורד`);
-        }
+        const groupName = d.groups.find(g=>g.id===groupId)?.name || "chat";
+        // Always download as file
+        const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = `${groupName}.txt`;
+        a.click();
+        URL.revokeObjectURL(a.href);
+        showToast(`✓ ${msgs.length} הודעות — קובץ הורד`);
       } catch (e) { showToast(`❌ ${e.message}`); }
       el.disabled = false;
       el.innerHTML = "📄 טקסט";
