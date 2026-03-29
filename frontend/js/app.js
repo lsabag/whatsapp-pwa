@@ -1,5 +1,5 @@
 // ── State ────────────────────────────────────────────────────────────────────
-const VERSION = "v2.3.0";
+const VERSION = "v2.3.1";
 const state = {
   view: "home",       // home | summary | cross | dashboard | topics | messages
   apiKey: "",
@@ -600,7 +600,10 @@ function renderDashboardContent(d) {
       </div>
     </div>
 
-    ${d.groups.map(g => `<div class="dash-card">
+    ${d.groups.map(g => {
+      const fm = g.firstMessage;
+      const lm = g.lastMessage;
+      return `<div class="dash-card">
       <div class="dash-card-header">
         <div class="group-avatar">${g.name.charAt(0).toUpperCase()}</div>
         <div style="flex:1;min-width:0">
@@ -608,6 +611,10 @@ function renderDashboardContent(d) {
           <div class="dash-card-meta">${g.message_count} הודעות · ${g.first_message_date || "?"} עד ${g.last_message_date || "?"}</div>
         </div>
         <button class="group-remove" data-delete-group="${g.id}">✕</button>
+      </div>
+      <div style="font-size:11px;color:var(--dim);padding:4px 0 8px;border-bottom:1px solid var(--border);margin-bottom:8px">
+        ${fm ? `<div>📥 ראשונה: <span style="color:var(--muted)">${fm.date} ${fm.time}</span> — <span style="color:var(--green)">${fm.sender}</span>: ${fm.text.slice(0,60)}${fm.text.length>60?"...":""}</div>` : ""}
+        ${lm ? `<div>📤 אחרונה: <span style="color:var(--muted)">${lm.date} ${lm.time}</span> — <span style="color:var(--green)">${lm.sender}</span>: ${lm.text.slice(0,60)}${lm.text.length>60?"...":""}</div>` : ""}
       </div>
       ${g.summaries.length ? g.summaries.slice(0, 5).map(s => {
         const time = new Date(s.created_at).toLocaleTimeString("he-IL", { hour: "2-digit", minute: "2-digit" });
@@ -639,7 +646,8 @@ function renderDashboardContent(d) {
         <button class="btn btn-primary btn-sm" style="flex:1" data-resummarize="${g.id}" data-max-date="${g.last_message_date || ""}">✨ סכם</button>
         <button class="btn btn-sm btn-outline" style="flex:1;margin:0" data-scan-topics="${g.id}" data-max-date="${g.last_message_date || ""}">🔍 סרוק נושאים</button>
       </div>
-    </div>`).join("")}
+    </div>`;
+    }).join("")}
 
     ${d.crossAnalyses?.length ? `
       <div class="section-sep">ניתוחי Cross-קבוצות</div>

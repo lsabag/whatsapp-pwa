@@ -383,10 +383,20 @@ async function getDashboard(env) {
     summaryMap[s.group_id].push({ ...s, result: JSON.parse(s.result) });
   }
 
+  // Get first and last message per group
+  const edgeMsgs = {};
+  for (const g of groups) {
+    const first = await env.DB.prepare("SELECT date, time, sender, text FROM messages WHERE group_id = ? ORDER BY id ASC LIMIT 1").bind(g.id).first();
+    const last = await env.DB.prepare("SELECT date, time, sender, text FROM messages WHERE group_id = ? ORDER BY id DESC LIMIT 1").bind(g.id).first();
+    edgeMsgs[g.id] = { first, last };
+  }
+
   return json({
     groups: groups.map(g => ({
       ...g,
-      summaries: summaryMap[g.id] || []
+      summaries: summaryMap[g.id] || [],
+      firstMessage: edgeMsgs[g.id]?.first || null,
+      lastMessage: edgeMsgs[g.id]?.last || null,
     })),
     crossAnalyses: crossAnalyses.map(c => ({ ...c, result: JSON.parse(c.result), group_ids: JSON.parse(c.group_ids) })),
     totalSummaries: summaries.length
