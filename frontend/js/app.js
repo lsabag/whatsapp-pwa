@@ -616,6 +616,7 @@ function renderDashboardContent(d) {
           <button class="group-remove" data-delete-summary="${encodeURIComponent(s.id)}" data-summary-date="${formatDate(s.created_at)} ${time}" data-summary-range="${range}" style="font-size:13px;padding:2px 6px">✕</button>
         </div>`;
       }).join("") : `<div style="font-size:12px;color:var(--dim);padding:8px">לא סוכם עדיין</div>`}
+      <input class="input input-sm" id="dash-focus-${g.id}" style="margin-top:8px" placeholder="מה לשים דגש? (וואצאפ, קלוד קוד, לקוחות...)" value="" />
       <select class="input input-sm" data-dash-dateselect="${g.id}" style="margin-top:8px">
         <option value="all" selected>כל ההודעות</option>
         <option value="week">השבוע האחרון</option>
@@ -734,10 +735,15 @@ function bindDashboardEvents(d) {
         dateFrom = fromInput?.value || null;
         dateTo = toInput?.value || null;
       }
+      // Get focus
+      const focusInput = document.getElementById(`dash-focus-${groupId}`);
+      const focus = focusInput?.value?.trim() || null;
+      // Save focus to group if provided
+      if (focus) API.updateGroup(groupId, { name: d.groups.find(g=>g.id===groupId)?.name || "", context: "", focus });
       el.disabled = true;
       el.innerHTML = `<span class="spinner"></span> מסכם...`;
       try {
-        await API.summarize(groupId, dateFrom, dateTo);
+        await API.summarize(groupId, dateFrom, dateTo, focus);
         state.dashboard = await API.getDashboard();
         notifyOtherTabs();
         showToast("✓ סיכום חדש נוצר");

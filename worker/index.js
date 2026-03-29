@@ -177,7 +177,7 @@ async function deleteSummary(id, env) {
 
 async function summarize(request, env) {
   const body = await request.json();
-  const { groupId, dateFrom, dateTo } = body;
+  const { groupId, dateFrom, dateTo, focus: requestFocus } = body;
 
   // Get API key
   const keyRow = await env.DB.prepare("SELECT value FROM settings WHERE key = 'groq_key'").first();
@@ -207,13 +207,14 @@ async function summarize(request, env) {
   const chunks = chunkMessages(msgs, 5500);
   const partials = [];
 
-  const focusLine = group.focus ? `\nשים דגש מיוחד על: ${group.focus}` : "";
+  const effectiveFocus = requestFocus || group.focus;
+  const focusLine = effectiveFocus ? `\nשים דגש מיוחד על: ${effectiveFocus}` : "";
   const contextLine = group.context ? ` | נושא: ${group.context}` : "";
 
   const sysChunk = `אתה מנתח שיחות WhatsApp לאנשי עסקים. ענה בעברית בלבד. החזר JSON בלבד ללא backticks ולא כלום אחר.
 חשוב מאוד: ציין כל נושא שעלה בשיחה, גם אם הוא קטן או שדיברו עליו רק כמה הודעות. אל תדלג על שום נושא.
 כל שם מוצר, כלי, טכנולוגיה, אפליקציה, או שירות שהוזכר — חייב להופיע ברשימת הנושאים.
-רשום כמה שיותר פריטים בכל שדה — עדיף יותר מדי מאשר פחות מדי.${group.focus ? `\nהמשתמש ביקש דגש מיוחד על: "${group.focus}" — וודא שכל אזכור של נושא זה מופיע בסיכום.` : ""}
+רשום כמה שיותר פריטים בכל שדה — עדיף יותר מדי מאשר פחות מדי.${effectiveFocus ? `\nהמשתמש ביקש דגש מיוחד על: "${effectiveFocus}" — וודא שכל אזכור של נושא זה מופיע בסיכום.` : ""}
 {"topics":["נושא 1","נושא 2","נושא 3","...כל הנושאים שעלו כולל כלים/מוצרים/שירותים"],"summary":"תקציר 3-5 משפטים מפורט","actionItems":["..."],"openQuestions":["..."],"businessInsights":["..."],"keyDecisions":["..."],"mood":"חיובי/ניטרלי/מתוח","urgentItems":["..."],"trends":["..."],"brokenPromises":["..."],"recurringProblems":["..."]}`;
 
   for (let i = 0; i < chunks.length; i++) {

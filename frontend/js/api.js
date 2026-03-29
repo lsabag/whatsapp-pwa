@@ -29,8 +29,8 @@ const API = {
   },
 
   // Summarize
-  summarize(groupId, dateFrom, dateTo) {
-    return this.fetch("/summarize", { method: "POST", body: { groupId, dateFrom, dateTo } });
+  summarize(groupId, dateFrom, dateTo, focus) {
+    return this.fetch("/summarize", { method: "POST", body: { groupId, dateFrom, dateTo, focus } });
   },
 
   // Summaries
