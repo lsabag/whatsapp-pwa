@@ -1,5 +1,5 @@
 // ── State ────────────────────────────────────────────────────────────────────
-const VERSION = "v2.4.1";
+const VERSION = "v2.4.2";
 const state = {
   view: "home",       // home | summary | cross | dashboard | topics | messages
   apiKey: "",
@@ -19,6 +19,17 @@ const state = {
   scanDates: {},      // groupId -> { from, to }
   dashPresets: {},    // groupId -> { preset, from, to }
 };
+
+// ── Safe HTML ID helper ──────────────────────────────────────────────────────
+const _safeIdMap = {};
+function safeId(id) {
+  if (!_safeIdMap[id]) {
+    let h = 0;
+    for (let i = 0; i < id.length; i++) h = ((h << 5) - h + id.charCodeAt(i)) | 0;
+    _safeIdMap[id] = "g" + Math.abs(h).toString(36);
+  }
+  return _safeIdMap[id];
+}
 
 // ── Toast ────────────────────────────────────────────────────────────────────
 function showToast(msg, duration = 3500) {
@@ -659,14 +670,16 @@ function renderDashboardContent(d) {
     ${d.groups.map(g => {
       const fm = g.firstMessage;
       const lm = g.lastMessage;
-      return `<div class="dash-card">
+      const sid = safeId(g.id);
+      const eid = encodeURIComponent(g.id);
+      return `<div class="dash-card" data-real-id="${eid}">
       <div class="dash-card-header">
         <div class="group-avatar">${g.name.charAt(0).toUpperCase()}</div>
         <div style="flex:1;min-width:0">
           <div class="dash-card-name">${g.name}</div>
           <div class="dash-card-meta">${g.message_count} הודעות · ${g.first_message_date || "?"} עד ${g.last_message_date || "?"}</div>
         </div>
-        <button class="group-remove" data-delete-group="${g.id}">✕</button>
+        <button class="group-remove" data-delete-group="${eid}">✕</button>
       </div>
       <div style="font-size:11px;color:var(--dim);padding:4px 0 8px;border-bottom:1px solid var(--border);margin-bottom:8px">
         ${fm ? `<div>📥 ראשונה: <span style="color:var(--muted)">${fm.date} ${fm.time}</span> — <span style="color:var(--green)">${fm.sender}</span>: ${fm.text.slice(0,60)}${fm.text.length>60?"...":""}</div>` : ""}
@@ -677,7 +690,7 @@ function renderDashboardContent(d) {
         const range = s.date_from && s.date_to ? `${s.date_from} → ${s.date_to}` : "טווח מלא";
         const msgs = s.message_count ? `${s.message_count} הודעות` : "";
         return `<div class="dash-summary-row">
-          <div style="flex:1;min-width:0;cursor:pointer" data-view-summary='${JSON.stringify({ groupId: g.id, result: s.result })}'>
+          <div style="flex:1;min-width:0;cursor:pointer" data-view-summary="${encodeURIComponent(JSON.stringify({ groupId: g.id, result: s.result }))}">
             <div style="font-size:12px;color:var(--text)">${range}</div>
             <div style="font-size:10px;color:var(--dim)">${formatDate(s.created_at)} ${time}${msgs ? ` · ${msgs}` : ""}</div>
           </div>
@@ -685,26 +698,26 @@ function renderDashboardContent(d) {
           <button class="group-remove" data-delete-summary="${encodeURIComponent(s.id)}" data-summary-date="${formatDate(s.created_at)} ${time}" data-summary-range="${range}" style="font-size:13px;padding:2px 6px">✕</button>
         </div>`;
       }).join("") : `<div style="font-size:12px;color:var(--dim);padding:8px">לא סוכם עדיין</div>`}
-      <input class="input input-sm" id="dash-focus-${g.id}" style="margin-top:8px" placeholder="מה לשים דגש? (וואצאפ, קלוד קוד, לקוחות...)" value="" />
-      <select class="input input-sm" data-dash-dateselect="${g.id}" style="margin-top:8px">
+      <input class="input input-sm" id="dash-focus-${sid}" style="margin-top:8px" placeholder="מה לשים דגש? (וואצאפ, קלוד קוד, לקוחות...)" value="" />
+      <select class="input input-sm" data-dash-dateselect="${eid}" style="margin-top:8px">
         ${["all","week","month","3months","6months","custom"].map(v => {
           const labels = {all:"כל ההודעות",week:"השבוע האחרון",month:"החודש האחרון","3months":"3 חודשים אחרונים","6months":"חצי שנה אחרונה",custom:"בחירת תאריכים..."};
           return `<option value="${v}" ${(state.dashPresets[g.id]?.preset||"all")===v?"selected":""}>${labels[v]}</option>`;
         }).join("")}
       </select>
-      <div class="date-range" id="custom-dates-${g.id}" style="${(state.dashPresets[g.id]?.preset)==="custom"?"":"display:none"}">
+      <div class="date-range" id="custom-dates-${sid}" style="${(state.dashPresets[g.id]?.preset)==="custom"?"":"display:none"}">
         <div style="flex:1;display:flex;gap:4px;align-items:center">
-          <input type="date" class="input" id="dash-from-${g.id}" value="${state.dashPresets[g.id]?.from||g.first_message_date||""}" min="${g.first_message_date || ""}" max="${g.last_message_date || ""}" style="flex:1" />
-          <button class="today-btn" data-today-dash="dash-from-${g.id}">היום</button>
+          <input type="date" class="input" id="dash-from-${sid}" value="${state.dashPresets[g.id]?.from||g.first_message_date||""}" min="${g.first_message_date || ""}" max="${g.last_message_date || ""}" style="flex:1" />
+          <button class="today-btn" data-today-dash="dash-from-${sid}">היום</button>
         </div>
         <div style="flex:1;display:flex;gap:4px;align-items:center">
-          <input type="date" class="input" id="dash-to-${g.id}" value="${state.dashPresets[g.id]?.to||g.last_message_date||""}" min="${g.first_message_date || ""}" max="${g.last_message_date || ""}" style="flex:1" />
-          <button class="today-btn" data-today-dash="dash-to-${g.id}">היום</button>
+          <input type="date" class="input" id="dash-to-${sid}" value="${state.dashPresets[g.id]?.to||g.last_message_date||""}" min="${g.first_message_date || ""}" max="${g.last_message_date || ""}" style="flex:1" />
+          <button class="today-btn" data-today-dash="dash-to-${sid}">היום</button>
         </div>
       </div>
       <div style="display:flex;gap:8px;margin-top:8px">
-        <button class="btn btn-primary btn-sm" style="flex:1" data-resummarize="${g.id}" data-max-date="${g.last_message_date || ""}">✨ סכם</button>
-        <button class="btn btn-sm btn-outline" style="flex:1;margin:0" data-scan-topics="${g.id}" data-max-date="${g.last_message_date || ""}">🔍 סרוק נושאים</button>
+        <button class="btn btn-primary btn-sm" style="flex:1" data-resummarize="${eid}">✨ סכם</button>
+        <button class="btn btn-sm btn-outline" style="flex:1;margin:0" data-scan-topics="${eid}">🔍 סרוק נושאים</button>
       </div>
     </div>`;
     }).join("")}
@@ -730,7 +743,7 @@ function bindDashboardEvents(d) {
   // View summary
   document.querySelectorAll("[data-view-summary]").forEach(el => {
     el.addEventListener("click", () => {
-      const data = JSON.parse(el.dataset.viewSummary);
+      const data = JSON.parse(decodeURIComponent(el.dataset.viewSummary));
       state.activeGroupId = data.groupId;
       state.activeSummary = data.result;
       state.view = "summary";
@@ -769,7 +782,7 @@ function bindDashboardEvents(d) {
   document.querySelectorAll("[data-delete-group]").forEach(el => {
     el.addEventListener("click", async () => {
       if (!confirm("למחוק קבוצה וכל הסיכומים שלה?")) return;
-      await API.deleteGroup(el.dataset.deleteGroup);
+      await API.deleteGroup(decodeURIComponent(el.dataset.deleteGroup));
       state.dashboard = await API.getDashboard();
       await loadDbGroups();
       render();
@@ -786,11 +799,12 @@ function bindDashboardEvents(d) {
 
   // Dashboard date selects — persist in state
   document.querySelectorAll("[data-dash-dateselect]").forEach(sel => {
-    const gId = sel.dataset.dashDateselect;
+    const gId = decodeURIComponent(sel.dataset.dashDateselect);
+    const sid = safeId(gId);
     if (!state.dashPresets[gId]) state.dashPresets[gId] = { preset: "all", from: null, to: null };
     sel.addEventListener("change", () => {
       const g = d.groups.find(g => g.id === gId);
-      const customEl = document.getElementById(`custom-dates-${gId}`);
+      const customEl = document.getElementById(`custom-dates-${sid}`);
       state.dashPresets[gId].preset = sel.value;
       if (sel.value === "custom") {
         if (customEl) customEl.style.display = "flex";
@@ -811,18 +825,19 @@ function bindDashboardEvents(d) {
   // Re-summarize with date range
   document.querySelectorAll("[data-resummarize]").forEach(el => {
     el.addEventListener("click", async () => {
-      const groupId = el.dataset.resummarize;
+      const groupId = decodeURIComponent(el.dataset.resummarize);
+      const sid = safeId(groupId);
       const preset = state.dashPresets[groupId] || { from: null, to: null };
       let dateFrom = preset.from;
       let dateTo = preset.to;
       if (preset.preset === "custom") {
-        dateFrom = document.getElementById(`dash-from-${groupId}`)?.value || null;
-        dateTo = document.getElementById(`dash-to-${groupId}`)?.value || null;
+        dateFrom = document.getElementById(`dash-from-${sid}`)?.value || null;
+        dateTo = document.getElementById(`dash-to-${sid}`)?.value || null;
         state.dashPresets[groupId].from = dateFrom;
         state.dashPresets[groupId].to = dateTo;
       }
       // Get focus
-      const focusInput = document.getElementById(`dash-focus-${groupId}`);
+      const focusInput = document.getElementById(`dash-focus-${sid}`);
       const focus = focusInput?.value?.trim() || null;
       // Save focus to group if provided
       if (focus) API.updateGroup(groupId, { name: d.groups.find(g=>g.id===groupId)?.name || "", context: "", focus });
@@ -855,13 +870,14 @@ function bindDashboardEvents(d) {
   // Scan topics
   document.querySelectorAll("[data-scan-topics]").forEach(el => {
     el.addEventListener("click", async () => {
-      const groupId = el.dataset.scanTopics;
+      const groupId = decodeURIComponent(el.dataset.scanTopics);
+      const sid = safeId(groupId);
       const preset = state.dashPresets[groupId] || { from: null, to: null };
       let dateFrom = preset.from;
       let dateTo = preset.to;
       if (preset.preset === "custom") {
-        dateFrom = document.getElementById(`dash-from-${groupId}`)?.value || null;
-        dateTo = document.getElementById(`dash-to-${groupId}`)?.value || null;
+        dateFrom = document.getElementById(`dash-from-${sid}`)?.value || null;
+        dateTo = document.getElementById(`dash-to-${sid}`)?.value || null;
       }
       el.disabled = true;
       el.innerHTML = `<span class="spinner"></span> סורק...`;
