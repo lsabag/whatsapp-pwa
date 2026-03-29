@@ -510,6 +510,7 @@ function renderHome(app) {
     </div>
     <div class="main">
       ${!state.apiKey ? renderSetup() : ""}
+      ${state.apiKey ? renderKeyReady() : ""}
       ${state.apiKey ? renderDropZone() : ""}
       ${hasGroups ? renderGroups() : ""}
       ${readyCount>0 ? renderReadyList() : ""}
@@ -531,6 +532,16 @@ function renderSetup() {
     <input class="input" id="api-key-input" type="password" placeholder="gsk_..." value="${state.apiKey}" dir="ltr"/>
     <div style="height:10px"></div>
     <button class="btn btn-primary" id="save-key-btn">שמור ומשך</button>
+  </div>`;
+}
+
+function renderKeyReady() {
+  return `<div class="setup-card" style="padding:14px 18px;display:flex;align-items:center;justify-content:space-between">
+    <div style="font-size:13px;color:var(--green)">🔑 API Key מוגדר</div>
+    <div style="display:flex;gap:6px">
+      <button class="btn-outline" id="share-key-btn" style="padding:6px 12px;border-radius:10px;font-size:12px;font-family:inherit;cursor:pointer;background:transparent;border:1px solid var(--border);color:var(--muted)">📲 קישור למכשיר אחר</button>
+      <button class="btn-outline" id="change-key-btn" style="padding:6px 12px;border-radius:10px;font-size:12px;font-family:inherit;cursor:pointer;background:transparent;border:1px solid var(--border);color:var(--dim)">שנה</button>
+    </div>
   </div>`;
 }
 
@@ -612,6 +623,15 @@ function bindHomeEvents() {
   document.getElementById("save-key-btn")?.addEventListener("click", () => {
     const val = document.getElementById("api-key-input")?.value.trim();
     if (val) { state.apiKey = val; localStorage.setItem("groq_key", val); render(); }
+  });
+
+  // Share key link
+  document.getElementById("share-key-btn")?.addEventListener("click", () => {
+    const url = `${location.origin}/#key=${encodeURIComponent(state.apiKey)}`;
+    navigator.clipboard.writeText(url).then(() => showToast("✓ קישור הועתק — פתח בטלפון"));
+  });
+  document.getElementById("change-key-btn")?.addEventListener("click", () => {
+    state.apiKey = ""; localStorage.removeItem("groq_key"); render();
   });
 
   // Drop zone
@@ -919,6 +939,17 @@ if ("serviceWorker" in navigator) {
       }
     }
   });
+}
+
+// ── Auto-import API Key from URL hash ─────────────────────────────────────────
+if (location.hash.startsWith("#key=")) {
+  const key = decodeURIComponent(location.hash.slice(5));
+  if (key) {
+    state.apiKey = key;
+    localStorage.setItem("groq_key", key);
+    history.replaceState(null, "", "/");
+    showToast("✓ API Key נשמר בהצלחה");
+  }
 }
 
 // ── Init ──────────────────────────────────────────────────────────────────────
