@@ -1,5 +1,5 @@
 // ── State ────────────────────────────────────────────────────────────────────
-const VERSION = "v2.2.0";
+const VERSION = "v2.2.1";
 const state = {
   view: "home",       // home | summary | cross | dashboard
   apiKey: "",
@@ -607,13 +607,13 @@ function renderDashboardContent(d) {
         const time = new Date(s.created_at).toLocaleTimeString("he-IL", { hour: "2-digit", minute: "2-digit" });
         const range = s.date_from && s.date_to ? `${s.date_from} → ${s.date_to}` : "טווח מלא";
         const msgs = s.message_count ? `${s.message_count} הודעות` : "";
-        return `<div class="dash-summary-row" data-view-summary='${JSON.stringify({ groupId: g.id, result: s.result })}'>
-          <div style="flex:1;min-width:0">
+        return `<div class="dash-summary-row">
+          <div style="flex:1;min-width:0;cursor:pointer" data-view-summary='${JSON.stringify({ groupId: g.id, result: s.result })}'>
             <div style="font-size:12px;color:var(--text)">${range}</div>
             <div style="font-size:10px;color:var(--dim)">${formatDate(s.created_at)} ${time}${msgs ? ` · ${msgs}` : ""}</div>
           </div>
           ${s.result.mood ? `<span class="badge badge-${{ חיובי: "green", ניטרלי: "blue", מתוח: "red" }[s.result.mood] || "blue"}">${s.result.mood}</span>` : ""}
-          <span style="color:var(--green);font-size:12px">←</span>
+          <button class="group-remove" data-delete-summary="${s.id}" style="font-size:13px;padding:2px 6px">✕</button>
         </div>`;
       }).join("") : `<div style="font-size:12px;color:var(--dim);padding:8px">לא סוכם עדיין</div>`}
       <select class="input input-sm" data-dash-dateselect="${g.id}" style="margin-top:8px">
@@ -665,6 +665,18 @@ function bindDashboardEvents(d) {
     el.addEventListener("click", () => {
       state.activeSummary = JSON.parse(el.dataset.viewCross);
       state.view = "cross";
+      render();
+    });
+  });
+
+  // Delete summary
+  document.querySelectorAll("[data-delete-summary]").forEach(el => {
+    el.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      await API.deleteSummary(el.dataset.deleteSummary);
+      state.dashboard = await API.getDashboard();
+      notifyOtherTabs();
+      showToast("✓ סיכום נמחק");
       render();
     });
   });

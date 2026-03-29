@@ -42,6 +42,7 @@ async function handleAPI(url, request, env) {
   // Summaries
   if (path === "/api/summarize" && method === "POST") return summarize(request, env);
   if (path.match(/^\/api\/summaries\/[^/]+$/) && method === "GET") return getSummaries(path.split("/")[3], env);
+  if (path.match(/^\/api\/summaries\/[^/]+$/) && method === "DELETE") return deleteSummary(path.split("/")[3], env);
 
   // Cross analysis
   if (path === "/api/cross-analyze" && method === "POST") return crossAnalyze(request, env);
@@ -164,6 +165,11 @@ async function getSummaries(groupId, env) {
     "SELECT id, group_id, date_from, date_to, message_count, result, created_at FROM summaries WHERE group_id = ? ORDER BY created_at DESC"
   ).bind(groupId).all();
   return json(rows.results.map(r => ({ ...r, result: JSON.parse(r.result) })));
+}
+
+async function deleteSummary(id, env) {
+  await env.DB.prepare("DELETE FROM summaries WHERE id = ?").bind(id).run();
+  return json({ ok: true });
 }
 
 // ── Summarize ──────────────────────────────────────────────────────────────
