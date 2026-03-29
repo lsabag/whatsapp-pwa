@@ -451,10 +451,12 @@ async function processBase64(base64, fileName) {
   const isZip = fileName.toLowerCase().endsWith(".zip");
   if (isZip) {
     const txtFiles = await extractTxtFromZip(buf);
-    showToast(`ZIP: ${txtFiles.length} קבצי טקסט, ${buf.byteLength} bytes`);
+    if (!txtFiles.length) { showToast(`ZIP: 0 txt files found (${buf.byteLength} bytes)`); render(); return; }
+    let debugLog = `ZIP: ${txtFiles.length} txt, ${buf.byteLength}b`;
     txtFiles.forEach(t => {
       const messages = parseWhatsApp(t.content);
-      if (!messages.length) { showToast(`0 הודעות ב-${t.filename} (${t.content.length} תווים)`); return; }
+      debugLog += ` | ${t.filename}: ${t.content.length}ch → ${messages.length}msg`;
+      if (!messages.length) return;
       state.groups.push({
         id: `${fileName}-${Date.now()}-${Math.random()}`,
         filename: fileName, messages, messageCount: messages.length,
@@ -464,9 +466,12 @@ async function processBase64(base64, fileName) {
         context: "", focus: ""
       });
     });
+    showToast(debugLog);
+    render(); return;
   } else {
     const text = new TextDecoder("utf-8").decode(buf);
     const messages = parseWhatsApp(text);
+    if (!messages.length) { showToast(`TXT: ${text.length}ch, 0 messages. First 100: ${text.slice(0,100)}`); render(); return; }
     if (messages.length) {
       state.groups.push({
         id: `${fileName}-${Date.now()}`,
@@ -483,10 +488,14 @@ async function processBase64(base64, fileName) {
 }
 
 // ── Toast ─────────────────────────────────────────────────────────────────────
-function showToast(msg) {
+function showToast(msg, duration=4000) {
   const t = document.getElementById("toast");
+  t.style.whiteSpace = msg.length > 60 ? "normal" : "nowrap";
+  t.style.maxWidth = "90vw";
+  t.style.textAlign = "center";
   t.textContent = msg; t.classList.add("show");
-  setTimeout(()=>t.classList.remove("show"), 2500);
+  clearTimeout(t._timer);
+  t._timer = setTimeout(()=>t.classList.remove("show"), duration);
 }
 
 // ── Render ────────────────────────────────────────────────────────────────────
@@ -520,7 +529,7 @@ function renderHome(app) {
         <div style="margin-bottom:8px;">ייצא קבוצה מוואצאפ ושתף לאפליקציה</div>
         <div style="font-size:11px;">פתח קבוצה → ⋮ → ייצוא צ׳אט → ללא מדיה</div>
       </div>` : ""}
-      <div style="text-align:center;padding:24px 0 8px;font-size:10px;color:var(--muted)">v1.0.9</div>
+      <div style="text-align:center;padding:24px 0 8px;font-size:10px;color:var(--muted)">v1.1.0</div>
     </div>`;
 
   bindHomeEvents();
