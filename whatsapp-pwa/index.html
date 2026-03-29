@@ -516,11 +516,11 @@ function renderHome(app) {
       ${state.apiKey ? renderDropZone() : ""}
       ${hasGroups ? renderGroups() : ""}
       ${readyCount>0 ? renderReadyList() : ""}
-      ${!hasGroups && state.apiKey ? `<div style="text-align:center;padding:32px 0;color:var(--dim);font-size:13px;">
+      ${!hasGroups && state.apiKey ? `<div style="text-align:center;padding:32px 0;color:var(--muted);font-size:13px;">
         <div style="margin-bottom:8px;">ייצא קבוצה מוואצאפ ושתף לאפליקציה</div>
         <div style="font-size:11px;">פתח קבוצה → ⋮ → ייצוא צ׳אט → ללא מדיה</div>
       </div>` : ""}
-      <div style="text-align:center;padding:24px 0 8px;font-size:10px;color:var(--dim)">v1.0.7</div>
+      <div style="text-align:center;padding:24px 0 8px;font-size:10px;color:var(--muted)">v1.0.8</div>
     </div>`;
 
   bindHomeEvents();
