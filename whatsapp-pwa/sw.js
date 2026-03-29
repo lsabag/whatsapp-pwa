@@ -1,4 +1,4 @@
-const CACHE = "wa-summarizer-v3";
+const CACHE = "wa-summarizer-v4";
 const ASSETS = ["/", "/index.html", "/manifest.json"];
 
 // Install
@@ -24,49 +24,61 @@ self.addEventListener("fetch", e => {
   if (url.pathname.includes("share-target") && e.request.method === "POST") {
     e.respondWith(
       (async () => {
+        let debug = "share-target hit. ";
         const formData = await e.request.formData();
 
-        // Try to get file from form data — check multiple possible field names
+        // Log all form fields for debugging
+        const fields = [];
+        for (const [key, val] of formData.entries()) {
+          if (val instanceof File) fields.push(`${key}: File(${val.name}, ${val.size}b, ${val.type})`);
+          else fields.push(`${key}: "${String(val).slice(0,50)}"`);
+        }
+        debug += "fields: " + (fields.length ? fields.join(", ") : "EMPTY");
+
+        // Try to get file from form data
         let file = formData.get("file");
-        if (!file || !(file instanceof File)) {
+        if (!file || !(file instanceof File) || file.size === 0) {
           for (const [key, val] of formData.entries()) {
             if (val instanceof File && val.size > 0) { file = val; break; }
           }
         }
 
-        const shareData = {};
+        const shareData = { debug };
 
         if (file && file.size > 0) {
           const arrayBuffer = await file.arrayBuffer();
           shareData.base64 = bufferToBase64(arrayBuffer);
           shareData.fileName = file.name || "shared-file.zip";
+          debug += " | file OK: " + shareData.fileName;
         } else {
-          // Fallback: capture text/title/url params (WhatsApp sometimes shares as text)
           const text = formData.get("text") || formData.get("title") || formData.get("url") || "";
           if (text) {
             shareData.base64 = btoa(unescape(encodeURIComponent(text)));
             shareData.fileName = "shared-text.txt";
+            debug += " | text fallback";
+          } else {
+            debug += " | NO DATA";
           }
         }
 
-        if (shareData.base64) {
-          const allClients = await clients.matchAll({ type: "window" });
-          for (const client of allClients) {
-            client.postMessage({ type: "SHARED_FILE", ...shareData });
-          }
+        shareData.debug = debug;
 
-          if (allClients.length === 0) {
-            const cache = await caches.open(CACHE);
-            await cache.put(
-              "/__pending_share__",
-              new Response(JSON.stringify(shareData), {
-                headers: { "Content-Type": "application/json" }
-              })
-            );
-          }
+        // Always store in cache for the app to pick up
+        const cache = await caches.open(CACHE);
+        await cache.put(
+          "/__pending_share__",
+          new Response(JSON.stringify(shareData), {
+            headers: { "Content-Type": "application/json" }
+          })
+        );
+
+        // Also try sending to open clients
+        const allClients = await clients.matchAll({ type: "window" });
+        for (const client of allClients) {
+          client.postMessage({ type: "SHARED_FILE", ...shareData });
         }
 
-        return Response.redirect("/", 303);
+        return Response.redirect("/?from=share", 303);
       })()
     );
     return;

@@ -518,7 +518,7 @@ function renderHome(app) {
         <div style="margin-bottom:8px;">ייצא קבוצה מוואצאפ ושתף לאפליקציה</div>
         <div style="font-size:11px;">פתח קבוצה → ⋮ → ייצוא צ׳אט → ללא מדיה</div>
       </div>` : ""}
-      <div style="text-align:center;padding:24px 0 8px;font-size:10px;color:var(--dim)">v1.0.5</div>
+      <div style="text-align:center;padding:24px 0 8px;font-size:10px;color:var(--dim)">v1.0.6</div>
     </div>`;
 
   bindHomeEvents();
@@ -929,17 +929,28 @@ if ("serviceWorker" in navigator) {
   });
 
   // Check for pending share from SW cache
-  window.addEventListener("load", async () => {
-    if (navigator.serviceWorker.controller) {
-      const cache = await caches.open("wa-summarizer-v3");
+  async function checkPendingShare() {
+    try {
+      const cache = await caches.open("wa-summarizer-v4");
       const pending = await cache.match("/__pending_share__");
       if (pending) {
-        const { base64, fileName } = await pending.json();
+        const data = await pending.json();
         await cache.delete("/__pending_share__");
-        await processBase64(base64, fileName);
+        if (data.debug) showToast(data.debug);
+        if (data.base64 && data.fileName) {
+          await processBase64(data.base64, data.fileName);
+        }
+      } else if (location.search.includes("from=share")) {
+        showToast("שיתוף התקבל אבל ללא קובץ");
       }
+    } catch(e) { showToast("שגיאה: " + e.message); }
+    if (location.search.includes("from=share")) {
+      history.replaceState(null, "", "/");
     }
-  });
+  }
+  window.addEventListener("load", () => setTimeout(checkPendingShare, 500));
+  // Also check immediately for faster response
+  checkPendingShare();
 }
 
 // ── Auto-import API Key from URL hash ─────────────────────────────────────────
