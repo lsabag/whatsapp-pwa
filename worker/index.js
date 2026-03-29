@@ -87,6 +87,7 @@ async function getGroups(env) {
 }
 
 async function getGroup(id, env) {
+  id = decodeURIComponent(id);
   const group = await env.DB.prepare("SELECT * FROM groups WHERE id = ?").bind(id).first();
   if (!group) return json({ error: "Not found" }, 404);
   return json(group);
@@ -132,6 +133,7 @@ async function createGroup(request, env) {
 }
 
 async function updateGroup(id, request, env) {
+  id = decodeURIComponent(id);
   const body = await request.json();
   const { name, context, focus } = body;
   await env.DB.prepare(
@@ -141,15 +143,17 @@ async function updateGroup(id, request, env) {
 }
 
 async function deleteGroup(id, env) {
+  const decoded = decodeURIComponent(id);
   await env.DB.batch([
-    env.DB.prepare("DELETE FROM messages WHERE group_id = ?").bind(id),
-    env.DB.prepare("DELETE FROM summaries WHERE group_id = ?").bind(id),
-    env.DB.prepare("DELETE FROM groups WHERE id = ?").bind(id),
+    env.DB.prepare("DELETE FROM messages WHERE group_id = ?").bind(decoded),
+    env.DB.prepare("DELETE FROM summaries WHERE group_id = ?").bind(decoded),
+    env.DB.prepare("DELETE FROM groups WHERE id = ?").bind(decoded),
   ]);
   return json({ ok: true });
 }
 
 async function getMessages(groupId, url, env) {
+  groupId = decodeURIComponent(groupId);
   const dateFrom = url.searchParams.get("from");
   const dateTo = url.searchParams.get("to");
 
@@ -338,6 +342,7 @@ async function scanTopics(request, env) {
 // ── Search Messages ────────────────────────────────────────────────────────
 
 async function searchMessages(groupId, url, env) {
+  groupId = decodeURIComponent(groupId);
   const topic = url.searchParams.get("topic") || "";
   const dateFrom = url.searchParams.get("from");
   const dateTo = url.searchParams.get("to");

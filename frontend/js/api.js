@@ -20,7 +20,7 @@ const API = {
   getGroup(id) { return this.fetch(`/groups/${id}`); },
   createGroup(group) { return this.fetch("/groups", { method: "POST", body: group }); },
   updateGroup(id, data) { return this.fetch(`/groups/${id}`, { method: "PUT", body: data }); },
-  deleteGroup(id) { return this.fetch(`/groups/${id}`, { method: "DELETE" }); },
+  deleteGroup(id) { return this.fetch(`/groups/${encodeURIComponent(id)}`, { method: "DELETE" }); },
   getMessages(groupId, from, to) {
     const params = new URLSearchParams();
     if (from) params.set("from", from);
