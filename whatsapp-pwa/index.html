@@ -410,25 +410,68 @@ async function callGroq(system, user, key) {
   return data.choices?.[0]?.message?.content || "{}";
 }
 
+function chunkMessages(messages, maxChars=5500) {
+  const chunks = []; let chunk = [], len = 0;
+  for (const m of messages) {
+    const line = `[${m.date} ${m.time}] ${m.sender}: ${m.text}`;
+    if (len + line.length > maxChars && chunk.length) {
+      chunks.push(chunk); chunk = []; len = 0;
+    }
+    chunk.push(m); len += line.length + 1;
+  }
+  if (chunk.length) chunks.push(chunk);
+  return chunks;
+}
+
 async function summarizeGroup(group) {
   const topSenders = getTopSenders(group.messages);
-  let recent = group.messages.slice(-200);
-  let chatText = recent.map(m=>`[${m.date} ${m.time}] ${m.sender}: ${m.text}`).join("\n");
-  // Groq limit ~6000 chars to stay safe under token limit
-  if (chatText.length > 6000) chatText = chatText.slice(-6000);
   const weekly = getWeeklyBuckets(group.messages).slice(-4).map(b=>`שבוע ${b.week}: ${b.count} הודעות`).join(", ");
+  const chunks = chunkMessages(group.messages);
 
-  const sys = `אתה מנתח שיחות WhatsApp לאנשי עסקים. ענה בעברית בלבד. החזר JSON בלבד ללא backticks ולא כלום אחר.
-{"summary":"תקציר 3-5 משפטים","actionItems":["..."],"openQuestions":["..."],"businessInsights":["..."],"keyDecisions":["..."],"mood":"חיובי/ניטרלי/מתוח","urgentItems":["..."],"trends":["מגמה שיח 1","מגמה 2"],"brokenPromises":["הבטחה שלא קוימה"],"recurringProblems":["בעיה חוזרת"]}`;
+  const sysChunk = `אתה מנתח שיחות WhatsApp לאנשי עסקים. ענה בעברית בלבד. החזר JSON בלבד ללא backticks ולא כלום אחר.
+{"summary":"תקציר 2-3 משפטים","actionItems":["..."],"openQuestions":["..."],"businessInsights":["..."],"keyDecisions":["..."],"mood":"חיובי/ניטרלי/מתוח","urgentItems":["..."],"trends":["..."],"brokenPromises":["..."],"recurringProblems":["..."]}`;
 
-  const user = `קבוצה: "${group.name}" | נושא: ${group.context||"כללי"} | דגש: ${group.focus||"הכל"}
+  const sysMerge = `אתה ממזג סיכומי חלקים של שיחת WhatsApp לסיכום אחד מקיף. ענה בעברית בלבד. החזר JSON בלבד ללא backticks ולא כלום אחר.
+{"summary":"תקציר 3-5 משפטים","actionItems":["..."],"openQuestions":["..."],"businessInsights":["..."],"keyDecisions":["..."],"mood":"חיובי/ניטרלי/מתוח","urgentItems":["..."],"trends":["מגמה 1","מגמה 2"],"brokenPromises":["הבטחה שלא קוימה"],"recurringProblems":["בעיה חוזרת"]}`;
+
+  const parseResult = (txt) => {
+    try { return JSON.parse(txt.replace(/```json|```/g,"").trim()); }
+    catch { return { summary:txt, actionItems:[], openQuestions:[], businessInsights:[], trends:[], brokenPromises:[], recurringProblems:[] }; }
+  };
+
+  if (chunks.length === 1) {
+    const chatText = chunks[0].map(m=>`[${m.date} ${m.time}] ${m.sender}: ${m.text}`).join("\n");
+    const user = `קבוצה: "${group.name}" | נושא: ${group.context||"כללי"} | דגש: ${group.focus||"הכל"}
 סה"כ: ${group.messages.length} הודעות | טופ: ${topSenders.map(s=>`${s.name}(${s.count})`).join(", ")}
 נפח שבועי: ${weekly}
 ${chatText}`;
+    return parseResult(await callGroq(sysChunk, user, state.apiKey));
+  }
 
-  const txt = await callGroq(sys, user, state.apiKey);
-  try { return JSON.parse(txt.replace(/```json|```/g,"").trim()); }
-  catch { return { summary:txt, actionItems:[], openQuestions:[], businessInsights:[], trends:[], brokenPromises:[], recurringProblems:[] }; }
+  // Multiple chunks: summarize each, then merge
+  state.progress[group.id] = `מנתח... (0/${chunks.length} חלקים)`;
+  render();
+  const partials = [];
+  for (let i = 0; i < chunks.length; i++) {
+    const chatText = chunks[i].map(m=>`[${m.date} ${m.time}] ${m.sender}: ${m.text}`).join("\n");
+    const user = `קבוצה: "${group.name}" | חלק ${i+1}/${chunks.length}
+${chatText}`;
+    partials.push(parseResult(await callGroq(sysChunk, user, state.apiKey)));
+    state.progress[group.id] = `מנתח... (${i+1}/${chunks.length} חלקים)`;
+    render();
+  }
+
+  // Merge all partial summaries
+  state.progress[group.id] = "ממזג סיכומים...";
+  render();
+  const mergeInput = `קבוצה: "${group.name}" | נושא: ${group.context||"כללי"} | דגש: ${group.focus||"הכל"}
+סה"כ: ${group.messages.length} הודעות | טופ: ${topSenders.map(s=>`${s.name}(${s.count})`).join(", ")}
+נפח שבועי: ${weekly}
+
+סיכומי חלקים:
+${partials.map((p,i) => `חלק ${i+1}: ${JSON.stringify(p)}`).join("\n")}`;
+
+  return parseResult(await callGroq(sysMerge, mergeInput, state.apiKey));
 }
 
 async function runCrossAnalysis() {
@@ -555,7 +598,7 @@ function renderHome(app) {
         <div style="margin-bottom:8px;">ייצא קבוצה מוואצאפ ושתף לאפליקציה</div>
         <div style="font-size:11px;">פתח קבוצה → ⋮ → ייצוא צ׳אט → ללא מדיה</div>
       </div>` : ""}
-      <div style="text-align:center;padding:24px 0 8px;font-size:10px;color:var(--muted)">v1.1.2</div>
+      <div style="text-align:center;padding:24px 0 8px;font-size:10px;color:var(--muted)">v1.1.3</div>
     </div>`;
 
   bindHomeEvents();
