@@ -113,7 +113,7 @@ async function runSummarize(groupId, dateFrom, dateTo, focus, onProgress) {
   const partials = [];
   for (let i = 0; i < totalChunks; i++) {
     onProgress(`מנתח חלק ${i + 1} מתוך ${totalChunks}...`, (i / totalChunks) * 80);
-    let retries = 3;
+    let retries = 4;
     while (retries > 0) {
       try {
         const res = await API.summarizeChunk({
@@ -123,24 +123,33 @@ async function runSummarize(groupId, dateFrom, dateTo, focus, onProgress) {
         partials.push(res.result);
         break;
       } catch (e) {
-        if (e.message.includes("חריגה") && retries > 1) {
-          onProgress(`ממתין (rate limit)... ניסיון ${4 - retries}/3`, (i / totalChunks) * 80);
-          await new Promise(r => setTimeout(r, 20000));
+        if (e.message.includes("rate_limit") && retries > 1) {
+          const wait = 30;
+          for (let s = wait; s > 0; s--) {
+            onProgress(`⏳ ממתין ${s} שניות (rate limit)...`, (i / totalChunks) * 80);
+            await new Promise(r => setTimeout(r, 1000));
+          }
           retries--;
         } else throw e;
       }
     }
-    // Wait between chunks to avoid rate limit
+    // Wait between chunks
     if (i < totalChunks - 1) {
-      onProgress(`מנתח חלק ${i + 1} מתוך ${totalChunks}... ⏳`, ((i + 1) / totalChunks) * 80);
-      await new Promise(r => setTimeout(r, 4000));
+      for (let s = 8; s > 0; s--) {
+        onProgress(`✓ חלק ${i + 1}/${totalChunks} — ממשיך בעוד ${s}...`, ((i + 1) / totalChunks) * 80);
+        await new Promise(r => setTimeout(r, 1000));
+      }
     }
   }
 
   // Step 3: Merge
-  onProgress(totalChunks > 1 ? "ממזג סיכומים..." : "שומר...", 85);
   if (totalChunks > 1) {
-    await new Promise(r => setTimeout(r, 3000)); // delay before merge
+    for (let s = 8; s > 0; s--) {
+      onProgress(`ממזג סיכומים בעוד ${s}...`, 85);
+      await new Promise(r => setTimeout(r, 1000));
+    }
+  } else {
+    onProgress("שומר...", 85);
   }
   const final = await API.summarizeMerge({
     groupId, dateFrom, dateTo, partials, totalMessages, topSenders,

@@ -447,29 +447,23 @@ async function getDashboard(env) {
 
 // ── Groq API ───────────────────────────────────────────────────────────────
 
-async function callGroq(system, user, key, retries = 3) {
-  for (let attempt = 0; attempt < retries; attempt++) {
-    const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${key}` },
-      body: JSON.stringify({
-        model: "llama-3.3-70b-versatile",
-        temperature: 0.3,
-        max_tokens: 3000,
-        messages: [{ role: "system", content: system }, { role: "user", content: user }]
-      })
-    });
-    if (res.status === 429 && attempt < retries - 1) {
-      await sleep(15000); // Wait 15s on rate limit
-      continue;
-    }
-    if (!res.ok) {
-      const msgs = { 401: "API Key לא תקין", 413: "הצ׳אט ארוך מדי", 429: "חריגה ממגבלת בקשות — נסה שוב בעוד דקה", 500: "שגיאה בשרת Groq" };
-      throw new Error(msgs[res.status] || `שגיאת Groq: ${res.status}`);
-    }
-    const data = await res.json();
-    return data.choices?.[0]?.message?.content || "{}";
+async function callGroq(system, user, key) {
+  const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Authorization": `Bearer ${key}` },
+    body: JSON.stringify({
+      model: "llama-3.3-70b-versatile",
+      temperature: 0.3,
+      max_tokens: 3000,
+      messages: [{ role: "system", content: system }, { role: "user", content: user }]
+    })
+  });
+  if (!res.ok) {
+    const msgs = { 401: "API Key לא תקין", 413: "הצ׳אט ארוך מדי", 429: "rate_limit", 500: "שגיאה בשרת Groq" };
+    throw new Error(msgs[res.status] || `שגיאת Groq: ${res.status}`);
   }
+  const data = await res.json();
+  return data.choices?.[0]?.message?.content || "{}";
 }
 
 function parseGroqResult(txt) {
