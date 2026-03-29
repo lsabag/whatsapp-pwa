@@ -76,14 +76,30 @@ function parseWhatsApp(text) {
     else if (msgs.length && line.trim() && !sysRe.test(line.trim()))
       msgs[msgs.length-1].text += " " + line.trim();
   }
+  if (msgs.length) detectClientDateFormat(msgs);
   return msgs;
+}
+
+let _clientDateFormat = null;
+function detectClientDateFormat(messages) {
+  _clientDateFormat = null;
+  for (const m of messages) {
+    const p = m.date.split(/[\/\.]/);
+    if (p.length < 3) continue;
+    if (+p[1] > 12) { _clientDateFormat = "MM/DD/YY"; return; }
+    if (+p[0] > 12) { _clientDateFormat = "DD/MM/YY"; return; }
+  }
+  _clientDateFormat = "DD/MM/YY";
 }
 
 function parseDateStr(s) {
   const p = s.split(/[\/\.]/);
   if (p.length < 3) return null;
-  let [d, mo, y] = p; if (y.length === 2) y = "20" + y;
-  return new Date(+y, +mo - 1, +d);
+  let y = p[2]; if (y.length === 2) y = "20" + y;
+  if (_clientDateFormat === "MM/DD/YY") {
+    return new Date(+y, +p[0] - 1, +p[1]);
+  }
+  return new Date(+y, +p[1] - 1, +p[0]);
 }
 
 function toISODate(d) {

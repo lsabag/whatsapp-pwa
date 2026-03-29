@@ -57,6 +57,9 @@ async function handleAPI(url, request, env) {
   // Dashboard
   if (path === "/api/dashboard" && method === "GET") return getDashboard(env);
 
+  // Fix dates migration
+  if (path === "/api/fix-dates" && method === "POST") return fixDates(env);
+
   return json({ error: "Not found" }, 404);
 }
 
@@ -97,6 +100,10 @@ async function createGroup(request, env) {
   const body = await request.json();
   let { id, name, filename, context, focus, messages } = body;
   const now = Date.now();
+
+  // Detect date format from messages
+  _dateFormat = null;
+  detectDateFormat(messages.map(m => m.date));
 
   // Check if a group with the same name already exists — reuse its ID to keep summaries
   const existing = await env.DB.prepare("SELECT id, created_at FROM groups WHERE name = ?").bind(name).first();
@@ -455,11 +462,58 @@ function chunkMessages(messages, maxChars = 5500) {
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
+// ── Fix dates migration ──────────────────────────────────────────────────────
+async function fixDates(env) {
+  const groups = (await env.DB.prepare("SELECT id FROM groups").all()).results;
+  let fixed = 0;
+  for (const g of groups) {
+    const msgs = (await env.DB.prepare("SELECT id, date FROM messages WHERE group_id = ?").bind(g.id).all()).results;
+    if (!msgs.length) continue;
+    // Detect format
+    _dateFormat = null;
+    detectDateFormat(msgs.map(m => m.date));
+    // Update in batches
+    const batchSize = 50;
+    for (let i = 0; i < msgs.length; i += batchSize) {
+      const batch = msgs.slice(i, i + batchSize);
+      const stmts = batch.map(m => {
+        const pd = parseDate(m.date);
+        return env.DB.prepare("UPDATE messages SET parsed_date = ? WHERE id = ?").bind(pd ? toISO(pd) : null, m.id);
+      });
+      await env.DB.batch(stmts);
+    }
+    // Update group dates
+    const first = (await env.DB.prepare("SELECT parsed_date FROM messages WHERE group_id = ? AND parsed_date IS NOT NULL ORDER BY parsed_date ASC LIMIT 1").bind(g.id).first());
+    const last = (await env.DB.prepare("SELECT parsed_date FROM messages WHERE group_id = ? AND parsed_date IS NOT NULL ORDER BY parsed_date DESC LIMIT 1").bind(g.id).first());
+    await env.DB.prepare("UPDATE groups SET first_message_date = ?, last_message_date = ? WHERE id = ?")
+      .bind(first?.parsed_date, last?.parsed_date, g.id).run();
+    fixed += msgs.length;
+  }
+  return json({ ok: true, fixed });
+}
+
+// Detect date format from a batch of date strings
+let _dateFormat = null;
+function detectDateFormat(dates) {
+  if (_dateFormat) return _dateFormat;
+  for (const s of dates) {
+    const p = s.split(/[\/\.]/);
+    if (p.length < 3) continue;
+    if (+p[1] > 12) { _dateFormat = "MM/DD/YY"; return _dateFormat; }
+    if (+p[0] > 12) { _dateFormat = "DD/MM/YY"; return _dateFormat; }
+  }
+  _dateFormat = "DD/MM/YY"; // default
+  return _dateFormat;
+}
+
 function parseDate(s) {
   const p = s.split(/[\/\.]/);
   if (p.length < 3) return null;
-  let [d, mo, y] = p; if (y.length === 2) y = "20" + y;
-  return new Date(+y, +mo - 1, +d);
+  let y = p[2]; if (y.length === 2) y = "20" + y;
+  if (_dateFormat === "MM/DD/YY") {
+    return new Date(+y, +p[0] - 1, +p[1]);
+  }
+  return new Date(+y, +p[1] - 1, +p[0]);
 }
 
 function toISO(d) {
