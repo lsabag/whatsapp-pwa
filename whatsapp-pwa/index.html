@@ -270,41 +270,65 @@ const state = {
   progress: {},
 };
 
-// ── ZIP Parser ────────────────────────────────────────────────────────────────
+// ── ZIP Parser (Central Directory based) ─────────────────────────────────────
 async function extractTxtFromZip(arrayBuffer) {
   const bytes = new Uint8Array(arrayBuffer);
   const dec = new TextDecoder("utf-8");
   const files = [];
-  let i = 0;
-  while (i < bytes.length - 4) {
-    if (bytes[i]===0x50&&bytes[i+1]===0x4B&&bytes[i+2]===0x03&&bytes[i+3]===0x04) {
-      const method = bytes[i+8]|(bytes[i+9]<<8);
-      const cSize = bytes[i+18]|(bytes[i+19]<<8)|(bytes[i+20]<<16)|(bytes[i+21]<<24);
-      const uSize = bytes[i+22]|(bytes[i+23]<<8)|(bytes[i+24]<<16)|(bytes[i+25]<<24);
-      const fnLen = bytes[i+26]|(bytes[i+27]<<8);
-      const exLen = bytes[i+28]|(bytes[i+29]<<8);
-      const fname = dec.decode(bytes.slice(i+30,i+30+fnLen));
-      const dStart = i+30+fnLen+exLen;
-      if (fname.endsWith(".txt")) {
-        const raw = bytes.slice(dStart, dStart+cSize);
-        if (method === 0) {
-          files.push({ filename: fname, content: dec.decode(raw) });
-        } else if (method === 8) {
-          try {
-            const ds = new DecompressionStream("deflate-raw");
-            const writer = ds.writable.getWriter();
-            writer.write(raw); writer.close();
-            const chunks = []; const reader = ds.readable.getReader();
-            while (true) { const {done, value} = await reader.read(); if (done) break; chunks.push(value); }
-            const total = chunks.reduce((s,c)=>s+c.length,0);
-            const result = new Uint8Array(total); let off=0;
-            for (const c of chunks) { result.set(c,off); off+=c.length; }
-            files.push({ filename: fname, content: dec.decode(result) });
-          } catch { console.warn("Failed to decompress:", fname); }
-        }
-      }
-      i = dStart+cSize;
-    } else i++;
+
+  // Find End of Central Directory (search from end)
+  let eocdPos = -1;
+  for (let i = bytes.length - 22; i >= 0 && i >= bytes.length - 65557; i--) {
+    if (bytes[i]===0x50 && bytes[i+1]===0x4B && bytes[i+2]===0x05 && bytes[i+3]===0x06) {
+      eocdPos = i; break;
+    }
+  }
+  if (eocdPos === -1) return files;
+
+  const cdOffset = bytes[eocdPos+16]|(bytes[eocdPos+17]<<8)|(bytes[eocdPos+18]<<16)|(bytes[eocdPos+19]<<24);
+  const cdCount = bytes[eocdPos+10]|(bytes[eocdPos+11]<<8);
+
+  // Read Central Directory entries
+  let pos = cdOffset;
+  for (let e = 0; e < cdCount; e++) {
+    if (pos+46 > bytes.length) break;
+    if (!(bytes[pos]===0x50 && bytes[pos+1]===0x4B && bytes[pos+2]===0x01 && bytes[pos+3]===0x02)) break;
+
+    const method = bytes[pos+10]|(bytes[pos+11]<<8);
+    const cSize = bytes[pos+20]|(bytes[pos+21]<<8)|(bytes[pos+22]<<16)|(bytes[pos+23]<<24);
+    const uSize = bytes[pos+24]|(bytes[pos+25]<<8)|(bytes[pos+26]<<16)|(bytes[pos+27]<<24);
+    const fnLen = bytes[pos+28]|(bytes[pos+29]<<8);
+    const exLen = bytes[pos+30]|(bytes[pos+31]<<8);
+    const cmLen = bytes[pos+32]|(bytes[pos+33]<<8);
+    const localOffset = bytes[pos+42]|(bytes[pos+43]<<8)|(bytes[pos+44]<<16)|(bytes[pos+45]<<24);
+    const fname = dec.decode(bytes.slice(pos+46, pos+46+fnLen));
+
+    pos += 46 + fnLen + exLen + cmLen;
+
+    if (!fname.toLowerCase().endsWith(".txt")) continue;
+
+    // Read data from local file header
+    const lh = localOffset;
+    const lhFnLen = bytes[lh+26]|(bytes[lh+27]<<8);
+    const lhExLen = bytes[lh+28]|(bytes[lh+29]<<8);
+    const dataStart = lh + 30 + lhFnLen + lhExLen;
+    const raw = bytes.slice(dataStart, dataStart + cSize);
+
+    if (method === 0) {
+      files.push({ filename: fname, content: dec.decode(raw) });
+    } else if (method === 8) {
+      try {
+        const ds = new DecompressionStream("deflate-raw");
+        const writer = ds.writable.getWriter();
+        writer.write(raw); writer.close();
+        const chunks = []; const reader = ds.readable.getReader();
+        while (true) { const {done, value} = await reader.read(); if (done) break; chunks.push(value); }
+        const total = chunks.reduce((s,c)=>s+c.length,0);
+        const result = new Uint8Array(total); let off=0;
+        for (const c of chunks) { result.set(c,off); off+=c.length; }
+        files.push({ filename: fname, content: dec.decode(result) });
+      } catch(err) { console.warn("Failed to decompress:", fname, err); }
+    }
   }
   return files;
 }
@@ -529,7 +553,7 @@ function renderHome(app) {
         <div style="margin-bottom:8px;">ייצא קבוצה מוואצאפ ושתף לאפליקציה</div>
         <div style="font-size:11px;">פתח קבוצה → ⋮ → ייצוא צ׳אט → ללא מדיה</div>
       </div>` : ""}
-      <div style="text-align:center;padding:24px 0 8px;font-size:10px;color:var(--muted)">v1.1.0</div>
+      <div style="text-align:center;padding:24px 0 8px;font-size:10px;color:var(--muted)">v1.1.1</div>
     </div>`;
 
   bindHomeEvents();
