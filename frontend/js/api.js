@@ -1,4 +1,4 @@
-// ── API Client ───────────────────────────────────────────────────────────────
+// ── API Client (DB operations only — Groq is called from browser) ────────────
 const API = {
   async fetch(path, options = {}) {
     const res = await fetch(`/api${path}`, {
@@ -17,41 +17,34 @@ const API = {
 
   // Groups
   getGroups() { return this.fetch("/groups"); },
-  getGroup(id) { return this.fetch(`/groups/${id}`); },
   createGroup(group) { return this.fetch("/groups", { method: "POST", body: group }); },
-  updateGroup(id, data) { return this.fetch(`/groups/${id}`, { method: "PUT", body: data }); },
+  updateGroup(id, data) { return this.fetch(`/groups/${encodeURIComponent(id)}`, { method: "PUT", body: data }); },
   deleteGroup(id) { return this.fetch(`/groups/${encodeURIComponent(id)}`, { method: "DELETE" }); },
-  getMessages(groupId, from, to) {
-    const params = new URLSearchParams();
-    if (from) params.set("from", from);
-    if (to) params.set("to", to);
-    return this.fetch(`/groups/${groupId}/messages?${params}`);
-  },
 
-  // Summarize (step-by-step)
+  // Summarize steps
   summarizePrepare(groupId, dateFrom, dateTo, focus) {
     return this.fetch("/summarize/prepare", { method: "POST", body: { groupId, dateFrom, dateTo, focus } });
   },
-  summarizeChunk(params) {
-    return this.fetch("/summarize/chunk", { method: "POST", body: params });
+  getChunkMessages(groupId, dateFrom, dateTo, chunkIndex, chunkSize) {
+    return this.fetch("/summarize/get-chunk", { method: "POST", body: { groupId, dateFrom, dateTo, chunkIndex, chunkSize } });
   },
-  summarizeMerge(params) {
-    return this.fetch("/summarize/merge", { method: "POST", body: params });
+  saveSummary(groupId, dateFrom, dateTo, result, totalMessages) {
+    return this.fetch("/summarize/save", { method: "POST", body: { groupId, dateFrom, dateTo, result, totalMessages } });
   },
 
   // Summaries
-  getSummaries(groupId) { return this.fetch(`/summaries/${groupId}`); },
+  getSummaries(groupId) { return this.fetch(`/summaries/${encodeURIComponent(groupId)}`); },
   deleteSummary(id) { return this.fetch(`/summaries/${encodeURIComponent(id)}`, { method: "DELETE" }); },
 
-  // Topic scan
-  scanTopics(groupId, dateFrom, dateTo) {
+  // Topic scan (returns messages, frontend calls Groq)
+  scanTopicsData(groupId, dateFrom, dateTo) {
     return this.fetch("/scan-topics", { method: "POST", body: { groupId, dateFrom, dateTo } });
   },
   searchMessages(groupId, topic, dateFrom, dateTo) {
     const params = new URLSearchParams({ topic });
     if (dateFrom) params.set("from", dateFrom);
     if (dateTo) params.set("to", dateTo);
-    return this.fetch(`/groups/${groupId}/search?${params}`);
+    return this.fetch(`/groups/${encodeURIComponent(groupId)}/search?${params}`);
   },
 
   // Cross analysis

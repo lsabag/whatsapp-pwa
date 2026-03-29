@@ -1,5 +1,5 @@
 // ── State ────────────────────────────────────────────────────────────────────
-const VERSION = "v2.4.2";
+const VERSION = "v2.5.0";
 const state = {
   view: "home",       // home | summary | cross | dashboard | topics | messages
   apiKey: "",
@@ -113,31 +113,48 @@ async function uploadGroup(group) {
   return result;
 }
 
-// ── Summarize Orchestrator (chunk by chunk with progress) ────────────────────
+// ── Prompts ──────────────────────────────────────────────────────────────────
+const SYS_CHUNK = `אתה מנתח שיחות WhatsApp לאנשי עסקים. ענה בעברית בלבד. החזר JSON בלבד ללא backticks ולא כלום אחר.
+חשוב מאוד: ציין כל נושא שעלה בשיחה, גם אם הוא קטן. אל תדלג על שום נושא.
+כל שם מוצר, כלי, טכנולוגיה, אפליקציה, או שירות שהוזכר — חייב להופיע ברשימת הנושאים.
+רשום כמה שיותר פריטים בכל שדה.`;
+const JSON_CHUNK = `\n{"topics":["...כל הנושאים"],"summary":"תקציר 3-5 משפטים","actionItems":["..."],"openQuestions":["..."],"businessInsights":["..."],"keyDecisions":["..."],"mood":"חיובי/ניטרלי/מתוח","urgentItems":["..."],"trends":["..."],"brokenPromises":["..."],"recurringProblems":["..."]}`;
+const SYS_MERGE = `אתה ממזג סיכומי חלקים של שיחת WhatsApp לסיכום אחד מקיף. ענה בעברית בלבד. החזר JSON בלבד ללא backticks.
+שמור על כל הנושאים מכל החלקים. אל תשמיט שום נושא.`;
+const JSON_MERGE = `\n{"topics":["כל הנושאים"],"summary":"תקציר מקיף 5-8 משפטים","actionItems":["כל המשימות"],"openQuestions":["..."],"businessInsights":["..."],"keyDecisions":["..."],"mood":"חיובי/ניטרלי/מתוח","urgentItems":["..."],"trends":["..."],"brokenPromises":["..."],"recurringProblems":["..."]}`;
+
+// ── Summarize Orchestrator (Groq called from browser) ────────────────────────
 async function runSummarize(groupId, dateFrom, dateTo, focus, onProgress) {
   // Step 1: Prepare
   onProgress("מכין...", 0);
   const prep = await API.summarizePrepare(groupId, dateFrom, dateTo, focus);
   const { totalChunks, totalMessages, topSenders, groupName, context, chunkSize } = prep;
+  const effectiveFocus = focus || prep.focus;
+  const focusPrompt = effectiveFocus ? `\nהמשתמש ביקש דגש על: "${effectiveFocus}".` : "";
   onProgress(`${totalMessages} הודעות, ${totalChunks} חלקים`, 0);
 
-  // Step 2: Chunk by chunk
+  // Step 2: Chunk by chunk — call Groq from browser
   const partials = [];
   for (let i = 0; i < totalChunks; i++) {
     onProgress(`מנתח חלק ${i + 1} מתוך ${totalChunks}...`, (i / totalChunks) * 80);
+
+    // Get chunk messages from DB
+    const chunkData = await API.getChunkMessages(groupId, dateFrom, dateTo, i, chunkSize);
+    const chatText = chunkData.messages.map(m => `[${m.date} ${m.time}] ${m.sender}: ${m.text}`).join("\n");
+    const trimmed = chatText.length > 6000 ? chatText.slice(0, 6000) : chatText;
+
+    const userMsg = `קבוצה: "${groupName}" | חלק ${i + 1}/${totalChunks}${effectiveFocus ? "\nדגש: " + effectiveFocus : ""}\n${trimmed}`;
+
+    // Call Groq directly from browser
     let retries = 4;
     while (retries > 0) {
       try {
-        const res = await API.summarizeChunk({
-          groupId, dateFrom, dateTo, chunkIndex: i, totalChunks, chunkSize,
-          focus: focus || prep.focus, groupName, context,
-        });
-        partials.push(res.result);
+        const txt = await Groq.call(SYS_CHUNK + focusPrompt + JSON_CHUNK, userMsg, state.apiKey);
+        partials.push(Groq.parse(txt));
         break;
       } catch (e) {
-        if (e.message.includes("rate_limit") && retries > 1) {
-          const wait = 30;
-          for (let s = wait; s > 0; s--) {
+        if (e.message === "rate_limit" && retries > 1) {
+          for (let s = 20; s > 0; s--) {
             onProgress(`⏳ ממתין ${s} שניות (rate limit)...`, (i / totalChunks) * 80);
             await new Promise(r => setTimeout(r, 1000));
           }
@@ -145,28 +162,31 @@ async function runSummarize(groupId, dateFrom, dateTo, focus, onProgress) {
         } else throw e;
       }
     }
-    // Wait between chunks
+
     if (i < totalChunks - 1) {
-      for (let s = 8; s > 0; s--) {
+      for (let s = 4; s > 0; s--) {
         onProgress(`✓ חלק ${i + 1}/${totalChunks} — ממשיך בעוד ${s}...`, ((i + 1) / totalChunks) * 80);
         await new Promise(r => setTimeout(r, 1000));
       }
     }
   }
 
-  // Step 3: Merge
-  if (totalChunks > 1) {
-    for (let s = 8; s > 0; s--) {
-      onProgress(`ממזג סיכומים בעוד ${s}...`, 85);
-      await new Promise(r => setTimeout(r, 1000));
-    }
+  // Step 3: Merge (if needed) then save
+  let result;
+  if (partials.length === 1) {
+    result = partials[0];
   } else {
-    onProgress("שומר...", 85);
+    onProgress("ממזג סיכומים...", 85);
+    const mergeInput = `קבוצה: "${groupName}" | דגש: ${effectiveFocus || "הכל"}
+סה"כ: ${totalMessages} הודעות | טופ: ${topSenders.map(([n, c]) => `${n}(${c})`).join(", ")}
+סיכומי חלקים:\n${partials.map((p, i) => `חלק ${i + 1}: ${JSON.stringify(p)}`).join("\n")}`;
+    const txt = await Groq.call(SYS_MERGE + focusPrompt + JSON_MERGE, mergeInput, state.apiKey);
+    result = Groq.parse(txt);
   }
-  const final = await API.summarizeMerge({
-    groupId, dateFrom, dateTo, partials, totalMessages, topSenders,
-    focus: focus || prep.focus, groupName, context,
-  });
+
+  // Save to DB via Worker
+  onProgress("שומר...", 95);
+  const final = await API.saveSummary(groupId, dateFrom, dateTo, result, totalMessages);
 
   onProgress("✓ סיכום מוכן!", 100);
   return final;
@@ -882,8 +902,16 @@ function bindDashboardEvents(d) {
       el.disabled = true;
       el.innerHTML = `<span class="spinner"></span> סורק...`;
       try {
-        const res = await API.scanTopics(groupId, dateFrom, dateTo);
-        state.scannedTopics = res.topics;
+        // Get messages from DB, call Groq from browser
+        const data = await API.scanTopicsData(groupId, dateFrom, dateTo);
+        const chatText = data.messages.map(m => `[${m.date}] ${m.sender}: ${m.text}`).join("\n");
+        const sys = `אתה סורק שיחות WhatsApp ומזהה את כל הנושאים שעלו. ענה בעברית בלבד. החזר JSON בלבד ללא backticks.
+זהה כל נושא, גם קטן. לכל נושא תן דירוג חום (hot/warm/cold) לפי כמות הדיון.
+כלול: שמות מוצרים, כלים, אנשים, אירועים, בעיות, החלטות.
+{"topics":[{"name":"שם הנושא","heat":"hot/warm/cold","messages":"~מספר הודעות","keywords":["מילה 1","מילה 2"],"preview":"משפט אחד"}]}`;
+        const txt = await Groq.call(sys, `קבוצה: "${data.groupName}" | ${data.totalMessages} הודעות\n${chatText}`, state.apiKey);
+        const result = Groq.parse(txt);
+        state.scannedTopics = result.topics || [];
         state.activeGroupId = groupId;
         state.scanDates = { from: dateFrom, to: dateTo };
         state.view = "topics";

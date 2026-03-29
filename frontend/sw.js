@@ -1,5 +1,5 @@
 const CACHE = "wa-summarizer-v6";
-const ASSETS = ["/", "/index.html", "/manifest.json", "/css/style.css", "/js/parser.js", "/js/api.js", "/js/app.js"];
+const ASSETS = ["/", "/index.html", "/manifest.json", "/css/style.css", "/js/parser.js", "/js/api.js", "/js/groq.js", "/js/app.js"];
 
 // Install
 self.addEventListener("install", e => {

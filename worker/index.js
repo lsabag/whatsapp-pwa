@@ -39,10 +39,10 @@ async function handleAPI(url, request, env) {
   if (path.match(/^\/api\/groups\/[^/]+$/) && method === "DELETE") return deleteGroup(path.split("/")[3], env);
   if (path.match(/^\/api\/groups\/[^/]+\/messages$/) && method === "GET") return getMessages(path.split("/")[3], url, env);
 
-  // Summaries — step-by-step
+  // Summaries
   if (path === "/api/summarize/prepare" && method === "POST") return summarizePrepare(request, env);
-  if (path === "/api/summarize/chunk" && method === "POST") return summarizeChunk(request, env);
-  if (path === "/api/summarize/merge" && method === "POST") return summarizeMerge(request, env);
+  if (path === "/api/summarize/get-chunk" && method === "POST") return getChunkMessages(request, env);
+  if (path === "/api/summarize/save" && method === "POST") return saveSummary(request, env);
   if (path.match(/^\/api\/summaries\/[^/]+$/) && method === "GET") return getSummaries(path.split("/")[3], env);
   if (path.match(/^\/api\/summaries\/[^/]+$/) && method === "DELETE") return deleteSummary(path.split("/")[3], env);
 
@@ -240,13 +240,9 @@ async function summarizePrepare(request, env) {
   });
 }
 
-// Step 2: Summarize one chunk — uses LIMIT/OFFSET to avoid fetching all messages
-async function summarizeChunk(request, env) {
-  const { groupId, dateFrom, dateTo, chunkIndex, totalChunks, chunkSize, focus, groupName, context } = await request.json();
-
-  const keyRow = await env.DB.prepare("SELECT value FROM settings WHERE key = 'groq_key'").first();
-  if (!keyRow) return json({ error: "API Key לא מוגדר" }, 400);
-
+// Step 2: Get messages for a specific chunk (frontend calls Groq directly)
+async function getChunkMessages(request, env) {
+  const { groupId, dateFrom, dateTo, chunkIndex, chunkSize } = await request.json();
   const msgsPerChunk = chunkSize || 80;
   let query = "SELECT date, time, sender, text FROM messages WHERE group_id = ?";
   const params = [groupId];
@@ -254,47 +250,17 @@ async function summarizeChunk(request, env) {
   if (dateTo) { query += " AND parsed_date <= ?"; params.push(dateTo); }
   query += ` ORDER BY id ASC LIMIT ${msgsPerChunk} OFFSET ${chunkIndex * msgsPerChunk}`;
   const msgs = (await env.DB.prepare(query).bind(...params).all()).results;
-
-  if (!msgs.length) return json({ chunkIndex, result: { summary: "", topics: [] } });
-
-  const focusPrompt = focus ? `\nהמשתמש ביקש דגש מיוחד על: "${focus}" — וודא שכל אזכור של נושא זה מופיע בסיכום.` : "";
-  const focusLine = focus ? `\nשים דגש מיוחד על: ${focus}` : "";
-  const contextLine = context ? ` | נושא: ${context}` : "";
-
-  const chatText = msgs.map(m => `[${m.date} ${m.time}] ${m.sender}: ${m.text}`).join("\n");
-  // Trim if still too long
-  const trimmed = chatText.length > 6000 ? chatText.slice(0, 6000) : chatText;
-  const userMsg = `קבוצה: "${groupName}"${contextLine} | חלק ${chunkIndex + 1}/${totalChunks}${focusLine}\n${trimmed}`;
-
-  const result = parseGroqResult(await callGroq(SYS_CHUNK + focusPrompt + "\n" + JSON_CHUNK, userMsg, keyRow.value));
-  return json({ chunkIndex, result });
+  return json({ messages: msgs });
 }
 
-// Step 3: Merge all chunks and save
-async function summarizeMerge(request, env) {
-  const { groupId, dateFrom, dateTo, partials, totalMessages, topSenders, focus, groupName, context } = await request.json();
-
-  const keyRow = await env.DB.prepare("SELECT value FROM settings WHERE key = 'groq_key'").first();
-  if (!keyRow) return json({ error: "API Key לא מוגדר" }, 400);
-
-  let result;
-  if (partials.length === 1) {
-    result = partials[0];
-  } else {
-    const focusPrompt = focus ? `\nהמשתמש ביקש דגש מיוחד על: "${focus}".` : "";
-    const mergeInput = `קבוצה: "${groupName}" | נושא: ${context || "כללי"} | דגש: ${focus || "הכל"}
-סה"כ: ${totalMessages} הודעות | טופ: ${topSenders.map(([n, c]) => `${n}(${c})`).join(", ")}
-סיכומי חלקים:\n${partials.map((p, i) => `חלק ${i + 1}: ${JSON.stringify(p)}`).join("\n")}`;
-    result = parseGroqResult(await callGroq(SYS_MERGE + focusPrompt + "\n" + JSON_MERGE, mergeInput, keyRow.value));
-  }
-
-  // Save
+// Step 3: Save summary result (Groq called from frontend)
+async function saveSummary(request, env) {
+  const { groupId, dateFrom, dateTo, result, totalMessages } = await request.json();
   const summaryId = `${groupId}-${Date.now()}`;
   await env.DB.prepare(
     "INSERT INTO summaries (id, group_id, date_from, date_to, message_count, result, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)"
   ).bind(summaryId, groupId, dateFrom || null, dateTo || null, totalMessages, JSON.stringify(result), Date.now()).run();
   await env.DB.prepare("UPDATE groups SET updated_at = ? WHERE id = ?").bind(Date.now(), groupId).run();
-
   return json({ id: summaryId, result, messageCount: totalMessages });
 }
 
@@ -340,12 +306,9 @@ async function getCrossAnalyses(env) {
 
 // ── Topic Scan ─────────────────────────────────────────────────────────────
 
+// Returns sampled messages for topic scanning (frontend calls Groq)
 async function scanTopics(request, env) {
-  const body = await request.json();
-  const { groupId, dateFrom, dateTo } = body;
-
-  const keyRow = await env.DB.prepare("SELECT value FROM settings WHERE key = 'groq_key'").first();
-  if (!keyRow) return json({ error: "API Key לא מוגדר" }, 400);
+  const { groupId, dateFrom, dateTo } = await request.json();
 
   const group = await env.DB.prepare("SELECT * FROM groups WHERE id = ?").bind(groupId).first();
   if (!group) return json({ error: "קבוצה לא נמצאה" }, 404);
@@ -359,21 +322,13 @@ async function scanTopics(request, env) {
 
   if (!msgs.length) return json({ error: "אין הודעות בטווח שנבחר" }, 400);
 
-  // Sample messages for topic detection — take spread across the range
+  // Sample messages for topic detection
   const sampleSize = Math.min(msgs.length, 300);
   const step = Math.max(1, Math.floor(msgs.length / sampleSize));
   const sample = [];
   for (let i = 0; i < msgs.length; i += step) sample.push(msgs[i]);
-  const chatText = sample.map(m => `[${m.date}] ${m.sender}: ${m.text}`).join("\n");
 
-  const sys = `אתה סורק שיחות WhatsApp ומזהה את כל הנושאים שעלו. ענה בעברית בלבד. החזר JSON בלבד ללא backticks.
-זהה כל נושא, גם קטן. לכל נושא תן דירוג חום (hot/warm/cold) לפי כמות הדיון וה"להט".
-כלול: שמות מוצרים, כלים, אנשים, אירועים, בעיות, החלטות — כל דבר שדוברו עליו.
-{"topics":[{"name":"שם הנושא","heat":"hot/warm/cold","messages":"~מספר הודעות משוער","keywords":["מילת מפתח 1","מילת מפתח 2"],"preview":"משפט אחד שמתאר על מה דיברו"}]}`;
-
-  const result = parseGroqResult(await callGroq(sys, `קבוצה: "${group.name}" | ${msgs.length} הודעות\n${chatText}`, keyRow.value));
-
-  return json({ topics: result.topics || [], messageCount: msgs.length });
+  return json({ messages: sample, groupName: group.name, totalMessages: msgs.length });
 }
 
 // ── Search Messages ────────────────────────────────────────────────────────
