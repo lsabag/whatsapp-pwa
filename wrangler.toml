@@ -1,0 +1,14 @@
+name = "whatsapp-summarizer"
+main = "worker/index.js"
+compatibility_date = "2024-12-01"
+
+[vars]
+ENVIRONMENT = "production"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "wa-summarizer"
+database_id = "e4eba0cd-9af2-4577-8a55-e6c131809c12"
+
+[site]
+bucket = "./frontend"
