@@ -1,5 +1,5 @@
 // ── State ────────────────────────────────────────────────────────────────────
-const VERSION = "v2.0.0";
+const VERSION = "v2.0.1";
 const state = {
   view: "home",       // home | summary | cross | dashboard
   apiKey: "",
@@ -314,8 +314,9 @@ function bindHomeEvents() {
       render();
     }
     state.processing = false;
-    // Refresh DB groups
+    // Refresh DB groups and notify other tabs/devices
     await loadDbGroups();
+    notifyOtherTabs();
     render();
   });
 
@@ -684,6 +685,42 @@ if (location.hash.startsWith("#key=")) {
   }
 }
 
+// ── Cross-tab sync via BroadcastChannel ──────────────────────────────────────
+const channel = new BroadcastChannel("wa-summarizer");
+channel.onmessage = async (e) => {
+  if (e.data === "refresh") {
+    await loadDbGroups();
+    if (state.view === "dashboard" && state.dashboard) {
+      state.dashboard = await API.getDashboard();
+    }
+    render();
+  }
+};
+
+function notifyOtherTabs() {
+  channel.postMessage("refresh");
+}
+
+// ── Cross-device polling ─────────────────────────────────────────────────────
+let lastPollHash = "";
+async function pollForUpdates() {
+  if (document.hidden) return;
+  try {
+    const groups = await API.getGroups();
+    const hash = JSON.stringify(groups.map(g => g.updated_at));
+    if (lastPollHash && hash !== lastPollHash) {
+      await loadDbGroups();
+      if (state.view === "dashboard" && state.dashboard) {
+        state.dashboard = await API.getDashboard();
+      }
+      render();
+      showToast("✓ נתונים עודכנו");
+    }
+    lastPollHash = hash;
+  } catch { /* ignore */ }
+}
+setInterval(pollForUpdates, 15000);
+
 // ── Init ─────────────────────────────────────────────────────────────────────
 (async function init() {
   try {
@@ -691,5 +728,6 @@ if (location.hash.startsWith("#key=")) {
     state.apiKey = settings.groq_key || "";
   } catch { /* no settings yet */ }
   await loadDbGroups();
+  lastPollHash = JSON.stringify(state.dbGroups.map(g => g.updated_at));
   render();
 })();
