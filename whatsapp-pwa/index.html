@@ -403,7 +403,7 @@ async function callGroq(system, user, key) {
     })
   });
   if (!res.ok) {
-    const msgs = { 401: "API Key לא תקין — בדוק את המפתח", 429: "חריגה ממגבלת בקשות — נסה שוב בעוד דקה", 500: "שגיאה בשרת Groq — נסה שוב" };
+    const msgs = { 401: "API Key לא תקין — בדוק את המפתח", 413: "הצ׳אט ארוך מדי — מקצר ומנסה שוב", 429: "חריגה ממגבלת בקשות — נסה שוב בעוד דקה", 500: "שגיאה בשרת Groq — נסה שוב" };
     throw new Error(msgs[res.status] || `שגיאת Groq: ${res.status}`);
   }
   const data = await res.json();
@@ -412,8 +412,10 @@ async function callGroq(system, user, key) {
 
 async function summarizeGroup(group) {
   const topSenders = getTopSenders(group.messages);
-  const recent = group.messages.slice(-400);
-  const chatText = recent.map(m=>`[${m.date} ${m.time}] ${m.sender}: ${m.text}`).join("\n");
+  let recent = group.messages.slice(-200);
+  let chatText = recent.map(m=>`[${m.date} ${m.time}] ${m.sender}: ${m.text}`).join("\n");
+  // Groq limit ~6000 chars to stay safe under token limit
+  if (chatText.length > 6000) chatText = chatText.slice(-6000);
   const weekly = getWeeklyBuckets(group.messages).slice(-4).map(b=>`שבוע ${b.week}: ${b.count} הודעות`).join(", ");
 
   const sys = `אתה מנתח שיחות WhatsApp לאנשי עסקים. ענה בעברית בלבד. החזר JSON בלבד ללא backticks ולא כלום אחר.
@@ -553,7 +555,7 @@ function renderHome(app) {
         <div style="margin-bottom:8px;">ייצא קבוצה מוואצאפ ושתף לאפליקציה</div>
         <div style="font-size:11px;">פתח קבוצה → ⋮ → ייצוא צ׳אט → ללא מדיה</div>
       </div>` : ""}
-      <div style="text-align:center;padding:24px 0 8px;font-size:10px;color:var(--muted)">v1.1.1</div>
+      <div style="text-align:center;padding:24px 0 8px;font-size:10px;color:var(--muted)">v1.1.2</div>
     </div>`;
 
   bindHomeEvents();
