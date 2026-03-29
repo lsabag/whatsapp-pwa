@@ -166,15 +166,24 @@ async function getMessages(groupId, url, env) {
   const dateFrom = url.searchParams.get("from");
   const dateTo = url.searchParams.get("to");
 
-  let query = "SELECT date, time, sender, text FROM messages WHERE group_id = ?";
+  let baseQuery = "SELECT date, time, sender, text FROM messages WHERE group_id = ?";
   const params = [groupId];
 
-  if (dateFrom) { query += " AND parsed_date >= ?"; params.push(dateFrom); }
-  if (dateTo) { query += " AND parsed_date <= ?"; params.push(dateTo); }
-  query += " ORDER BY id ASC";
+  if (dateFrom) { baseQuery += " AND parsed_date >= ?"; params.push(dateFrom); }
+  if (dateTo) { baseQuery += " AND parsed_date <= ?"; params.push(dateTo); }
+  baseQuery += " ORDER BY id ASC";
 
-  const rows = await env.DB.prepare(query).bind(...params).all();
-  return json(rows.results);
+  // Paginate to handle D1's row limit
+  const allMessages = [];
+  const pageSize = 4000;
+  let offset = 0;
+  while (true) {
+    const rows = await env.DB.prepare(`${baseQuery} LIMIT ${pageSize} OFFSET ${offset}`).bind(...params).all();
+    allMessages.push(...rows.results);
+    if (rows.results.length < pageSize) break;
+    offset += pageSize;
+  }
+  return json(allMessages);
 }
 
 // ── Get Summaries ──────────────────────────────────────────────────────────

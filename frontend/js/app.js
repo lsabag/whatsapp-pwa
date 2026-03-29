@@ -1,5 +1,5 @@
 // ── State ────────────────────────────────────────────────────────────────────
-const VERSION = "v2.5.0";
+const VERSION = "v2.5.1";
 const state = {
   view: "home",       // home | summary | cross | dashboard | topics | messages
   apiKey: "",
@@ -738,6 +738,7 @@ function renderDashboardContent(d) {
       <div style="display:flex;gap:8px;margin-top:8px">
         <button class="btn btn-primary btn-sm" style="flex:1" data-resummarize="${eid}">✨ סכם</button>
         <button class="btn btn-sm btn-outline" style="flex:1;margin:0" data-scan-topics="${eid}">🔍 סרוק נושאים</button>
+        <button class="btn btn-sm btn-outline" style="flex:0;margin:0;white-space:nowrap" data-export-text="${eid}">📄 טקסט</button>
       </div>
     </div>`;
     }).join("")}
@@ -884,6 +885,33 @@ function bindDashboardEvents(d) {
         showToast("✓ סיכום חדש נוצר");
       } catch (e) { showToast(`❌ ${e.message}`); }
       render();
+    });
+  });
+
+  // Export text
+  document.querySelectorAll("[data-export-text]").forEach(el => {
+    el.addEventListener("click", async () => {
+      const groupId = decodeURIComponent(el.dataset.exportText);
+      el.disabled = true;
+      el.innerHTML = `<span class="spinner"></span>`;
+      try {
+        const msgs = await API.fetch(`/groups/${encodeURIComponent(groupId)}/messages`);
+        const text = msgs.map(m => `[${m.date} ${m.time}] ${m.sender}: ${m.text}`).join("\n");
+        // Try clipboard, fallback to download
+        try {
+          await navigator.clipboard.writeText(text);
+          showToast(`✓ ${msgs.length} הודעות הועתקו ללוח`);
+        } catch {
+          const blob = new Blob([text], { type: "text/plain" });
+          const a = document.createElement("a");
+          a.href = URL.createObjectURL(blob);
+          a.download = `${d.groups.find(g=>g.id===groupId)?.name||"chat"}.txt`;
+          a.click();
+          showToast(`✓ ${msgs.length} הודעות — קובץ הורד`);
+        }
+      } catch (e) { showToast(`❌ ${e.message}`); }
+      el.disabled = false;
+      el.innerHTML = "📄 טקסט";
     });
   });
 
