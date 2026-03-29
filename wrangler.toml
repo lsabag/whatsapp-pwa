@@ -10,5 +10,6 @@ binding = "DB"
 database_name = "wa-summarizer"
 database_id = "e4eba0cd-9af2-4577-8a55-e6c131809c12"
 
-[site]
-bucket = "./frontend"
+[assets]
+directory = "./frontend"
+binding = "ASSETS"
