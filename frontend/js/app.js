@@ -1,5 +1,5 @@
 // ── State ────────────────────────────────────────────────────────────────────
-const VERSION = "v2.5.2";
+const VERSION = "v2.5.3";
 const state = {
   view: "home",       // home | summary | cross | dashboard | topics | messages
   apiKey: "",
@@ -692,6 +692,13 @@ function renderDashboardContent(d) {
       const lm = g.lastMessage;
       const sid = safeId(g.id);
       const eid = encodeURIComponent(g.id);
+      // Ensure preset dates are always computed
+      if (!state.dashPresets[g.id]) state.dashPresets[g.id] = { preset: "all", from: null, to: null };
+      const dp = state.dashPresets[g.id];
+      if (dp.preset && dp.preset !== "all" && dp.preset !== "custom" && !dp.from) {
+        const { from, to } = getPresetDates(dp.preset, g.last_message_date);
+        dp.from = from; dp.to = to;
+      }
       return `<div class="dash-card" data-real-id="${eid}">
       <div class="dash-card-header">
         <div class="group-avatar">${g.name.charAt(0).toUpperCase()}</div>
@@ -935,7 +942,9 @@ function bindDashboardEvents(d) {
       try {
         // Get messages from DB, call Groq from browser
         const data = await API.scanTopicsData(groupId, dateFrom, dateTo);
-        const chatText = data.messages.map(m => `[${m.date}] ${m.sender}: ${m.text}`).join("\n");
+        let chatText = data.messages.map(m => `[${m.date}] ${m.sender}: ${m.text}`).join("\n");
+        // Trim to ~5000 chars to stay within Groq free tier token limit
+        if (chatText.length > 5000) chatText = chatText.slice(0, 5000);
         const sys = `אתה סורק שיחות WhatsApp ומזהה את כל הנושאים שעלו. ענה בעברית בלבד. החזר JSON בלבד ללא backticks.
 זהה כל נושא, גם קטן. לכל נושא תן דירוג חום (hot/warm/cold) לפי כמות הדיון.
 כלול: שמות מוצרים, כלים, אנשים, אירועים, בעיות, החלטות.

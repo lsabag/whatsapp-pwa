@@ -331,8 +331,8 @@ async function scanTopics(request, env) {
 
   if (!msgs.length) return json({ error: "אין הודעות בטווח שנבחר" }, 400);
 
-  // Sample messages for topic detection
-  const sampleSize = Math.min(msgs.length, 300);
+  // Sample messages for topic detection — keep it small for Groq free tier
+  const sampleSize = Math.min(msgs.length, 150);
   const step = Math.max(1, Math.floor(msgs.length / sampleSize));
   const sample = [];
   for (let i = 0; i < msgs.length; i += step) sample.push(msgs[i]);
